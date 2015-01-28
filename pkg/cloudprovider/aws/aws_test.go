@@ -51,7 +51,7 @@ func TestReadAWSCloudConfig(t *testing.T) {
 }
 
 func TestNewAWSCloud(t *testing.T) {
-	fakeAuthFunc := func() (auth aws.Auth, err error) {
+	fakeAuthFunc := func(config *AWSCloudConfig) (auth aws.Auth, err error) {
 		return aws.Auth{"", "", ""}, nil
 	}
 

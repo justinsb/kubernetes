@@ -42,11 +42,13 @@ type AWSCloud struct {
 
 type AWSCloudConfig struct {
 	Global struct {
-		Region string
+		Region    string
+		AccessKey string
+		SecretKey string
 	}
 }
 
-type AuthFunc func() (auth aws.Auth, err error)
+type AuthFunc func(config *AWSCloudConfig) (auth aws.Auth, err error)
 
 func init() {
 	cloudprovider.RegisterCloudProvider("aws", func(config io.Reader) (cloudprovider.Interface, error) {
@@ -54,8 +56,18 @@ func init() {
 	})
 }
 
-func getAuth() (auth aws.Auth, err error) {
-	return aws.GetAuth("", "")
+func getAuth(config *AWSCloudConfig) (auth aws.Auth, err error) {
+	// If empty strings are passed to GetAuth, it will look for
+	// environment variables and instance based role credentials.
+	accessKey := ""
+	secretKey := ""
+
+	if config != nil {
+		accessKey = config.Global.AccessKey
+		secretKey = config.Global.SecretKey
+	}
+
+	return aws.GetAuth(accessKey, secretKey)
 }
 
 // readAWSCloudConfig reads an instance of AWSCloudConfig from config reader.
@@ -84,7 +96,7 @@ func newAWSCloud(config io.Reader, authFunc AuthFunc) (*AWSCloud, error) {
 		return nil, fmt.Errorf("unable to read AWS cloud provider config file: %v", err)
 	}
 
-	auth, err := authFunc()
+	auth, err := authFunc(cfg)
 	if err != nil {
 		return nil, err
 	}
