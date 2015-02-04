@@ -110,7 +110,7 @@ func newAWSCloud(config io.Reader, authFunc AuthFunc) (*AWSCloud, error) {
 		if strings.Contains(cfg.Global.Region, ".") {
 			region.EC2Endpoint = "http://ec2." + cfg.Global.Region
 		} else {
-			return nil, fm:qt.Errorf("not a valid AWS region: %s", cfg.Global.Region)
+			return nil, fmt.Errorf("not a valid AWS region: %s", cfg.Global.Region)
 		}
 	}
 
