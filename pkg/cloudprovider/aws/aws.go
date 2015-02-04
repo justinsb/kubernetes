@@ -21,6 +21,7 @@ import (
 	"io"
 	"net"
 	"regexp"
+	"strings"
 
 	"code.google.com/p/gcfg"
 	"github.com/mitchellh/goamz/aws"
@@ -103,7 +104,14 @@ func newAWSCloud(config io.Reader, authFunc AuthFunc) (*AWSCloud, error) {
 
 	region, ok := aws.Regions[cfg.Global.Region]
 	if !ok {
-		return nil, fmt.Errorf("not a valid AWS region: %s", cfg.Global.Region)
+		// Special-case for private clouds that support the EC2 API:
+		//   if the region is actually a fqdn (has dots), then we use that as the endpoint
+		// XXX: Should we extend the metadata services/ section instead?
+		if strings.Contains(cfg.Global.Region, ".") {
+			region.EC2Endpoint = "http://ec2." + cfg.Global.Region
+		} else {
+			return nil, fm:qt.Errorf("not a valid AWS region: %s", cfg.Global.Region)
+		}
 	}
 
 	ec2 := ec2.New(auth, region)
