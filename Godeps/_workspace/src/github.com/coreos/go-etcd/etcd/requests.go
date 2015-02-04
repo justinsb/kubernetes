@@ -3,6 +3,7 @@ package etcd
 import (
 	"errors"
 	"fmt"
+        "log"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -315,6 +316,7 @@ func DefaultCheckRetry(cluster *Cluster, numReqs int, lastResp http.Response,
 	err error) error {
 
 	if numReqs >= 2*len(cluster.Machines) {
+                log.Println("Cluster Machines:", cluster.Machines)
 		return newError(ErrCodeEtcdNotReachable,
 			"Tried to connect to each peer twice and failed", 0)
 	}
