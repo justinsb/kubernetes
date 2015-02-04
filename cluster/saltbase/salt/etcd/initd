@@ -19,6 +19,7 @@ DAEMON=/usr/local/bin/$NAME
 # DAEMON_ARGS="-peer-addr $HOSTNAME:7001 -name $HOSTNAME"
 host_ip=$(hostname -i)
 DAEMON_ARGS="-addr ${host_ip}:4001 -bind-addr ${host_ip}:4001 -data-dir /var/etcd/data -listen-peer-urls http://${host_ip}:2380 -initial-advertise-peer-urls http://${host_ip}:2380 -name ${HOSTNAME} -initial-cluster ${HOSTNAME}=http://${host_ip}:2380"
+# Temporary override of DAEMON_ARGS
 DAEMON_ARGS="-addr 0.0.0.0:4001 -bind-addr 0.0.0.0:4001 -data-dir /var/etcd/data"
 DAEMON_LOG_FILE=/var/log/$NAME.log
 PIDFILE=/var/run/$NAME.pid
