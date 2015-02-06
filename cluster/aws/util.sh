@@ -233,6 +233,7 @@ function kube-up {
   local htpasswd
   htpasswd=$(cat "${KUBE_TEMP}/htpasswd")
 
+  echo "Using AWS_SSH_KEY: ${AWS_SSH_KEY}"
   if [ ! -f $AWS_SSH_KEY ]; then
     ssh-keygen -f $AWS_SSH_KEY -N ''
   fi
