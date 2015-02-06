@@ -49,11 +49,12 @@ echo "E2E_OPT: ${E2E_OPT}"                         # hack/e2e.go options
 echo "E2E_SET_CLUSTER_API_VERSION: ${E2E_SET_CLUSTER_API_VERSION:-<not set>}" # optional, for GKE, set CLUSTER_API_VERSION to git hash
 echo "--------------------------------------------------------------------------------"
 
-# GCE variables
-export INSTANCE_PREFIX=${E2E_CLUSTER_NAME}
 if [[ "${KUBERNETES_PROVIDER}" == "aws" ]]; then
+    export KUBE_AWS_INSTANCE_PREFIX=${E2E_CLUSTER_NAME}
     export KUBE_AWS_ZONE=${E2E_ZONE}
 else
+    # GCE variables
+    export INSTANCE_PREFIX=${E2E_CLUSTER_NAME}
     export KUBE_GCE_ZONE=${E2E_ZONE}
     export KUBE_GCE_NETWORK=${E2E_NETWORK}
 
