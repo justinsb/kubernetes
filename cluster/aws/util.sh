@@ -636,7 +636,6 @@ function test-setup {
 function test-teardown {
   echo "Shutting down test cluster."
   "${KUBE_ROOT}/cluster/kube-down.sh"
-  echo "test-teardown complete"
 }
 
 
