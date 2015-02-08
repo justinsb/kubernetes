@@ -2,6 +2,10 @@ machine:
   services:
     - docker
 
+dependencies:
+  pre:
+    - pip install awscli
+
 test:
   override:
     - hack/e2e-test.sh:
