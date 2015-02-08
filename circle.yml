@@ -4,6 +4,9 @@ machine:
 
 test:
   override:
-    - KUBE_SKIP_CONFIRMATIONS=y KUBERNETES_PROVIDER=aws hack/e2e-test.sh
+    - hack/e2e-test.sh:
         timeout: 900
+        environment:
+          KUBE_SKIP_CONFIRMATIONS=y
+          KUBERNETES_PROVIDER=aws
 
