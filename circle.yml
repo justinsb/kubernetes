@@ -7,5 +7,5 @@ test:
     - hack/e2e-test.sh:
         timeout: 900
         environment:
-          KUBE_SKIP_CONFIRMATIONS=y
-          KUBERNETES_PROVIDER=aws
+          KUBE_SKIP_CONFIRMATIONS: y
+          KUBERNETES_PROVIDER: aws
