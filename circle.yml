@@ -9,4 +9,3 @@ test:
         environment:
           KUBE_SKIP_CONFIRMATIONS=y
           KUBERNETES_PROVIDER=aws
-
