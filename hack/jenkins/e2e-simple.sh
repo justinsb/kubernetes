@@ -37,6 +37,9 @@ if [[ "${CIRCLECI:-}" == "true" ]]; then
     JOB_NAME="circleci-${CIRCLE_PROJECT_USERNAME}-${CIRCLE_PROJECT_REPONAME}"
     BUILD_NUMBER=${CIRCLE_BUILD_NUM}
     WORKSPACE=`pwd`
+else
+    # Jenkins?
+    export HOME=${WORKSPACE} # Nothing should want Jenkins $HOME
 fi
 
 # Unlike the kubernetes-build script, we expect some environment
@@ -72,7 +75,6 @@ fi
 
 
 export PATH=${PATH}:/usr/local/go/bin
-export HOME=${WORKSPACE} # Nothing should want Jenkins $HOME
 export KUBE_SKIP_CONFIRMATIONS=y
 
 # sudo gcloud components update -q
