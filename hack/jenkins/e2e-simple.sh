@@ -33,6 +33,13 @@ set -o xtrace
 #    exit 1
 #fi
 
+if [[ "${CIRCLECI:-}" == "true" ]]; then
+    JOB_NAME="circleci-${CIRCLE_PROJECT_USERNAME}-${CIRCLE_PROJECT_REPONAME}"
+    BUILD_NUMBER=${CIRCLE_BUILD_NUM}
+    WORKSPACE=/workspace
+    mkdir -p ${WORKSPACE}
+fi
+
 # Unlike the kubernetes-build script, we expect some environment
 # variables to be set. We echo these immediately and presume "set -o
 # nounset" will force the caller to set them: (The first several are
