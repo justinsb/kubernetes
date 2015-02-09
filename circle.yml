@@ -8,7 +8,7 @@ dependencies:
 
 test:
   override:
-    - hack/e2e-test.sh:
+    - hack/jenkins/e2e-simple.sh
         timeout: 900
         environment:
           KUBE_SKIP_CONFIRMATIONS: y
