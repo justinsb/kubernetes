@@ -27,4 +27,6 @@ set -x
 docker build -t "${DOCKER_HUB_USER}/update-demo:kitten" images/kitten
 docker build -t "${DOCKER_HUB_USER}/update-demo:nautilus" images/nautilus
 
-docker push "${DOCKER_HUB_USER}/update-demo"
+[[ ${KUBE_SKIP_PUSH_DOCKER} =~ ^[yY]$ ]] || {
+  docker push "${DOCKER_HUB_USER}/update-demo"
+}
