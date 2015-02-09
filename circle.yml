@@ -8,6 +8,8 @@ dependencies:
 
 test:
   override:
+    - hack/jenkins/build.sh:
+        timeout: 900
     - hack/jenkins/e2e-simple.sh:
         timeout: 900
         environment:
