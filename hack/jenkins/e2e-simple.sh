@@ -36,8 +36,7 @@ set -o xtrace
 if [[ "${CIRCLECI:-}" == "true" ]]; then
     JOB_NAME="circleci-${CIRCLE_PROJECT_USERNAME}-${CIRCLE_PROJECT_REPONAME}"
     BUILD_NUMBER=${CIRCLE_BUILD_NUM}
-    WORKSPACE=/workspace
-    mkdir -p ${WORKSPACE}
+    WORKSPACE=`pwd`
 fi
 
 # Unlike the kubernetes-build script, we expect some environment
