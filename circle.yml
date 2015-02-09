@@ -13,3 +13,8 @@ test:
         environment:
           KUBE_SKIP_CONFIRMATIONS: y
           KUBERNETES_PROVIDER: aws
+          KUBE_SKIP_PUSH_GCS: y
+          E2E_CLUSTER_NAME: jenkins
+          E2E_NETWORK: ""
+          E2E_ZONE: us-west-2
+          E2E_OPT: ""
