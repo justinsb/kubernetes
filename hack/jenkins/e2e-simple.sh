@@ -97,8 +97,18 @@ fi
 # Have cmd/e2e run by goe2e.sh generate JUnit report in ${WORKSPACE}/junit*.xml
 export E2E_REPORT_DIR=${WORKSPACE}
 
+
+
+function teardown() {
+  echo "Cleaning up with e2e --down"
+  go run ./hack/e2e.go ${E2E_OPT} -v --down
+}
+
+trap "teardown" EXIT
+
 go run ./hack/e2e.go ${E2E_OPT} -v --down
 go run ./hack/e2e.go ${E2E_OPT} -v --up
 go run ./hack/e2e.go -v --ctl="version --match-server-version=false"
-go run ./hack/e2e.go ${E2E_OPT} -v --test || echo "Ignored, Jenkins will pass/fail based on test failures"
-go run ./hack/e2e.go ${E2E_OPT} -v --down
+go run ./hack/e2e.go ${E2E_OPT} -v --test
+
+exit 0

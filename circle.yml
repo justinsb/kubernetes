@@ -7,12 +7,13 @@ dependencies:
     - sudo pip install awscli
 
 test:
-  override:
+  pre:
     - hack/jenkins/build.sh:
         timeout: 1800
         environment:
           KUBERNETES_PROVIDER: aws
           KUBE_SKIP_PUSH_GCS: y
+  override:
     - hack/jenkins/e2e-simple.sh:
         timeout: 1800
         environment:
