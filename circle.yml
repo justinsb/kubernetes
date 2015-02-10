@@ -9,12 +9,12 @@ dependencies:
 test:
   override:
     - hack/jenkins/build.sh:
-        timeout: 900
+        timeout: 1800
         environment:
           KUBERNETES_PROVIDER: aws
           KUBE_SKIP_PUSH_GCS: y
     - hack/jenkins/e2e-simple.sh:
-        timeout: 900
+        timeout: 1800
         environment:
           KUBERNETES_PROVIDER: aws
           KUBE_SKIP_PUSH_DOCKER: y
