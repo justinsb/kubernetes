@@ -14,7 +14,7 @@ test:
           KUBERNETES_PROVIDER: aws
           KUBE_SKIP_PUSH_GCS: y
   override:
-    - hack/jenkins/e2e-simple.sh:
+    - hack/jenkins/e2e.sh:
         timeout: 1800
         environment:
           KUBERNETES_PROVIDER: aws
