@@ -28,9 +28,13 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-if [[ $(find . | wc -l) != 1 ]]; then
-    echo $PWD not empty, bailing!
-    exit 1
+if [[ "${CIRCLECI:-}" == "true" ]]; then
+    JOB_NAME="circleci-${CIRCLE_PROJECT_USERNAME}-${CIRCLE_PROJECT_REPONAME}"
+    BUILD_NUMBER=${CIRCLE_BUILD_NUM}
+    WORKSPACE=`pwd`
+else
+    # Jenkins?
+    export HOME=${WORKSPACE} # Nothing should want Jenkins $HOME
 fi
 
 # Unlike the kubernetes-build script, we expect some environment
@@ -49,28 +53,47 @@ echo "E2E_OPT: ${E2E_OPT}"                         # hack/e2e.go options
 echo "E2E_SET_CLUSTER_API_VERSION: ${E2E_SET_CLUSTER_API_VERSION:-<not set>}" # optional, for GKE, set CLUSTER_API_VERSION to git hash
 echo "--------------------------------------------------------------------------------"
 
-# GCE variables
-export INSTANCE_PREFIX=${E2E_CLUSTER_NAME}
-export KUBE_GCE_ZONE=${E2E_ZONE}
-export KUBE_GCE_NETWORK=${E2E_NETWORK}
 
-# GKE variables
-export CLUSTER_NAME=${E2E_CLUSTER_NAME}
-export ZONE=${E2E_ZONE}
-export KUBE_GKE_NETWORK=${E2E_NETWORK}
+if [[ "${KUBERNETES_PROVIDER}" == "aws" ]]; then
+    export KUBE_AWS_INSTANCE_PREFIX=${E2E_CLUSTER_NAME}
+    export KUBE_AWS_ZONE=${E2E_ZONE}
+else
+    # GCE variables
+    export INSTANCE_PREFIX=${E2E_CLUSTER_NAME}
+    export KUBE_GCE_ZONE=${E2E_ZONE}
+    export KUBE_GCE_NETWORK=${E2E_NETWORK}
+
+    # GKE variables
+    export CLUSTER_NAME=${E2E_CLUSTER_NAME}
+    export ZONE=${E2E_ZONE}
+    export KUBE_GKE_NETWORK=${E2E_NETWORK}
+fi
+
 
 export PATH=${PATH}:/usr/local/go/bin
-export HOME=${WORKSPACE} # Nothing should want Jenkins $HOME
 export KUBE_SKIP_CONFIRMATIONS=y
 
-# sudo gcloud components update -q
+if [[ -d _output/ ]]; then
+    echo "Found _output/ directory; will use binaries from there"
+    cp _output/release-tars/kubernetes*.tar.gz .
+else
+    echo "Pulling binaries from GCS"
+    if [[ $(find . | wc -l) != 1 ]]; then
+        echo $PWD not empty, bailing!
+        exit 1
+    fi
 
-GITHASH=$(gsutil cat gs://kubernetes-release/ci/latest.txt)
-gsutil -m cp gs://kubernetes-release/ci/${GITHASH}/kubernetes.tar.gz gs://kubernetes-release/ci/${GITHASH}/kubernetes-test.tar.gz .
+    # sudo gcloud components update -q
+
+    GITHASH=$(gsutil cat gs://kubernetes-release/ci/latest.txt)
+    gsutil -m cp gs://kubernetes-release/ci/${GITHASH}/kubernetes.tar.gz gs://kubernetes-release/ci/${GITHASH}/kubernetes-test.tar.gz .
+fi
+
 md5sum kubernetes*.tar.gz
 tar -xzf kubernetes.tar.gz
 tar -xzf kubernetes-test.tar.gz
 cd kubernetes
+
 
 # Set by GKE-CI to change the CLUSTER_API_VERSION to the git version
 if [[ ! -z ${E2E_SET_CLUSTER_API_VERSION:-} ]]; then
@@ -80,6 +103,13 @@ fi
 # Have cmd/e2e run by goe2e.sh generate JUnit report in ${WORKSPACE}/junit*.xml
 export E2E_REPORT_DIR=${WORKSPACE}
 
+function teardown() {
+  echo "Cleaning up with e2e --down"
+  go run ./hack/e2e.go ${E2E_OPT} -v --down
+}
+  
+trap "teardown" EXIT
+  
 ### Set up ###
 go run ./hack/e2e.go ${E2E_OPT} -v --down
 go run ./hack/e2e.go ${E2E_OPT} -v --up
@@ -90,5 +120,3 @@ go run ./hack/e2e.go -v --ctl="version --match-server-version=false"
 # with a nonzero error code if it was only tests that failed.
 go run ./hack/e2e.go ${E2E_OPT} -v --test --test_args="--ginkgo.noColor" || true
 
-### Clean up ###
-go run ./hack/e2e.go ${E2E_OPT} -v --down
