@@ -80,6 +80,7 @@ function influx-data-exists {
   local influx_url="http://$influx_ip:8086/db/k8s/series?u=root&p=root"
   local ok="false"
   for i in `seq 1 10`; do
+    echo "Querying influxdb on: ${influx_url}"
     if curl --retry $max_retries --retry-delay $retry_delay -G $influx_url --data-urlencode "q=select * from stats limit 1" \
       && curl --retry $max_retries --retry-delay $retry_delay -G $influx_url --data-urlencode "q=select * from machine limit 1"; then
       echo "retrieved data from InfluxDB."
