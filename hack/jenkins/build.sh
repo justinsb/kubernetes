@@ -50,8 +50,15 @@ export KUBE_SKIP_CONFIRMATIONS=y
 rm -rf ~/.kube*
 make clean
 git clean -fdx
-docker ps -aq | xargs -r docker rm
-docker images -q | xargs -r docker rmi
+
+docker_ps=`docker ps -aq`
+if [[ -n "${docker_ps}" ]]; then
+    echo ${docker_ps} | xargs docker rm
+fi
+docker_images=`docker images -q`
+if [[ -n "${docker_images}" ]]; then
+    echo ${docker_images} | xargs docker rmi
+fi
 
 # Build
 go run ./hack/e2e.go -v --build
@@ -61,4 +68,4 @@ go run ./hack/e2e.go -v --build
     ./build/push-ci-build.sh
 }
 
-sha256sum _output/release-tars/kubernetes*.tar.gz
+sha256sum _output/release-tars/kubernetes*.tar.gz || shasum -a 256 _output/release-tars/kubernetes*.tar.gz

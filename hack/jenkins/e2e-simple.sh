@@ -84,7 +84,7 @@ export KUBE_SKIP_CONFIRMATIONS=y
 
 cp _output/release-tars/kubernetes*.tar.gz .
 
-md5sum kubernetes*.tar.gz
+md5sum kubernetes*.tar.gz || md5 kubernetes*.tar.gz
 tar -xzf kubernetes.tar.gz
 tar -xzf kubernetes-test.tar.gz
 cd kubernetes
