@@ -616,6 +616,9 @@ func init() {
 			if err := s.Convert(&in.Status.Conditions, &out.Status.Conditions, 0); err != nil {
 				return err
 			}
+			if err := s.Convert(&in.Status.Addresses, &out.Status.Addresses, 0); err != nil {
+				return err
+			}
 
 			out.HostIP = in.Status.HostIP
 			out.PodCIDR = in.Spec.PodCIDR
@@ -636,6 +639,9 @@ func init() {
 				return err
 			}
 			if err := s.Convert(&in.Status.Conditions, &out.Status.Conditions, 0); err != nil {
+				return err
+			}
+			if err := s.Convert(&in.Status.Addresses, &out.Status.Addresses, 0); err != nil {
 				return err
 			}
 

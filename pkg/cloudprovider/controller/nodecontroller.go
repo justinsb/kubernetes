@@ -108,7 +108,8 @@ func (s *NodeController) Run(period time.Duration, syncNodeList, syncNodeStatus 
 			glog.Errorf("Error loading initial static nodes: %v", err)
 		}
 	}
-	nodes, err = s.PopulateIPs(nodes)
+	nodes = s.DoChecks(nodes)
+	nodes, err = s.PopulateAddresses(nodes)
 	if err != nil {
 		glog.Errorf("Error getting nodes ips: %v", err)
 	}
@@ -220,7 +221,7 @@ func (s *NodeController) SyncNodeStatus() error {
 		return err
 	}
 	nodes = s.DoChecks(nodes)
-	nodes, err = s.PopulateIPs(nodes)
+	nodes, err = s.PopulateAddresses(nodes)
 	if err != nil {
 		return err
 	}
@@ -264,8 +265,8 @@ func latestReadyTime(node *api.Node) util.Time {
 	return readyTime
 }
 
-// PopulateIPs queries IPs for given list of nodes.
-func (s *NodeController) PopulateIPs(nodes *api.NodeList) (*api.NodeList, error) {
+// PopulateAddresses queries NodeAddresses for given list of nodes.
+func (s *NodeController) PopulateAddresses(nodes *api.NodeList) (*api.NodeList, error) {
 	if s.isRunningCloudProvider() {
 		instances, ok := s.cloud.Instances()
 		if !ok {
@@ -277,7 +278,8 @@ func (s *NodeController) PopulateIPs(nodes *api.NodeList) (*api.NodeList, error)
 			if err != nil {
 				glog.Errorf("error getting instance ip address for %s: %v", node.Name, err)
 			} else {
-				node.Status.HostIP = hostIP.String()
+				address := api.NodeAddress{Kind: api.NodeLegacyHostIP, Value: hostIP.String()}
+				node.Status.Addresses = append(node.Status.Addresses, address)
 			}
 		}
 	} else {
@@ -285,7 +287,8 @@ func (s *NodeController) PopulateIPs(nodes *api.NodeList) (*api.NodeList, error)
 			node := &nodes.Items[i]
 			addr := net.ParseIP(node.Name)
 			if addr != nil {
-				node.Status.HostIP = node.Name
+				address := api.NodeAddress{Kind: api.NodeLegacyHostIP, Value: addr.String()}
+				node.Status.Addresses = append(node.Status.Addresses, address)
 			} else {
 				addrs, err := lookupIP(node.Name)
 				if err != nil {
@@ -293,7 +296,8 @@ func (s *NodeController) PopulateIPs(nodes *api.NodeList) (*api.NodeList, error)
 				} else if len(addrs) == 0 {
 					glog.Errorf("No ip address for node %v", node.Name)
 				} else {
-					node.Status.HostIP = addrs[0].String()
+					address := api.NodeAddress{Kind: api.NodeLegacyHostIP, Value: addrs[0].String()}
+					node.Status.Addresses = append(node.Status.Addresses, address)
 				}
 			}
 		}

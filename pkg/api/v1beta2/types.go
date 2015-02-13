@@ -587,6 +587,8 @@ type NodeStatus struct {
 	Phase NodePhase `json:"phase,omitempty" description:"node phase is the current lifecycle phase of the node"`
 	// Conditions is an array of current node conditions.
 	Conditions []NodeCondition `json:"conditions,omitempty" description:"conditions is an array of current node conditions"`
+	// Queried from cloud provider, if available.
+	Addresses []NodeAddress `json:"addresses,omitempty" description:"list of addresses reachable to the node"`
 }
 
 type NodePhase string
@@ -620,6 +622,22 @@ type NodeCondition struct {
 	LastTransitionTime util.Time         `json:"lastTransitionTime,omitempty" description:"last time the condition transit from one status to another"`
 	Reason             string            `json:"reason,omitempty" description:"(brief) reason for the condition's last transition"`
 	Message            string            `json:"message,omitempty" description:"human readable message indicating details about last transition"`
+}
+
+type NodeAddressKind string
+
+// These are valid address type of node. NodeLegacyHostIP is used to transit from out-dated
+// HostIP field to NodeAddress.
+const (
+	NodeLegacyHostIP NodeAddressKind = "LegacyHostIP"
+	NodeHostName     NodeAddressKind = "Hostname"
+	NodeExternalIPv4 NodeAddressKind = "ExternalIPv4"
+	NodeInternalIPv4 NodeAddressKind = "InternalIPv4"
+)
+
+type NodeAddress struct {
+	Kind  NodeAddressKind `json:"kind"`
+	Value string          `json:"value"`
 }
 
 // NodeResources represents resources on a Kubernetes system node

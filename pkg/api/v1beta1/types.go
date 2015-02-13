@@ -623,6 +623,8 @@ type NodeStatus struct {
 	Phase NodePhase `json:"phase,omitempty" description:"node phase is the current lifecycle phase of the node"`
 	// Conditions is an array of current node conditions.
 	Conditions []NodeCondition `json:"conditions,omitempty" description:"conditions is an array of current node conditions"`
+	// Queried from cloud provider, if available.
+	Addresses []NodeAddress `json:"addresses,omitempty" description:"list of addresses reachable to the node"`
 }
 
 type NodePhase string
@@ -658,6 +660,22 @@ type NodeCondition struct {
 	Message            string            `json:"message,omitempty" description:"human readable message indicating details about last transition"`
 }
 
+type NodeAddressKind string
+
+// These are valid address type of node. NodeLegacyHostIP is used to transit from out-dated
+// HostIP field to NodeAddress.
+const (
+	NodeLegacyHostIP NodeAddressKind = "LegacyHostIP"
+	NodeHostName     NodeAddressKind = "Hostname"
+	NodeExternalIPv4 NodeAddressKind = "ExternalIPv4"
+	NodeInternalIPv4 NodeAddressKind = "InternalIPv4"
+)
+
+type NodeAddress struct {
+	Kind  NodeAddressKind `json:"kind"`
+	Value string          `json:"value"`
+}
+
 // NodeResources represents resources on a Kubernetes system node
 // see https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/resources.md for more details.
 type NodeResources struct {
@@ -680,8 +698,6 @@ type ResourceList map[ResourceName]util.IntOrString
 // The name of the minion according to etcd is in ID.
 type Minion struct {
 	TypeMeta `json:",inline"`
-	// Queried from cloud provider, if available.
-	HostIP string `json:"hostIP,omitempty" description:"IP address of the node"`
 	// Resources available on the node
 	NodeResources NodeResources `json:"resources,omitempty" description:"characterization of node resources"`
 	// Pod IP range assigned to the node

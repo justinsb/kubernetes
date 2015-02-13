@@ -140,6 +140,15 @@ func (p *PodCache) clearNodeStatus() {
 	p.currentNodes = map[objKey]api.NodeStatus{}
 }
 
+func (p *PodCache) getAddress(addresses []api.NodeAddress, kind api.NodeAddressKind) string {
+	for i := range addresses {
+		if addresses[i].Kind == kind {
+			return addresses[i].Value
+		}
+	}
+	return ""
+}
+
 // TODO: once Host gets moved to spec, this can take a podSpec + metadata instead of an
 // entire pod?
 func (p *PodCache) updatePodStatus(pod *api.Pod) error {
@@ -193,7 +202,7 @@ func (p *PodCache) computePodStatus(pod *api.Pod) (api.PodStatus, error) {
 	if err != nil {
 		glog.V(5).Infof("error getting pod %s status: %v, retry later", pod.Name, err)
 	} else {
-		newStatus.HostIP = nodeStatus.HostIP
+		newStatus.HostIP = p.getAddress(nodeStatus.Addresses, api.NodeLegacyHostIP)
 		newStatus.Info = result.Status.Info
 		newStatus.PodIP = result.Status.PodIP
 		if newStatus.Info == nil {

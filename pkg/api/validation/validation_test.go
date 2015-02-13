@@ -1919,7 +1919,12 @@ func TestValidateMinion(t *testing.T) {
 				Labels: validSelector,
 			},
 			Status: api.NodeStatus{
-				HostIP: "something",
+				Addresses: []api.NodeAddress{
+					{
+						Kind:  api.NodeLegacyHostIP,
+						Value: "something",
+					},
+				},
 			},
 		},
 		{
@@ -1927,7 +1932,12 @@ func TestValidateMinion(t *testing.T) {
 				Name: "abc",
 			},
 			Status: api.NodeStatus{
-				HostIP: "something",
+				Addresses: []api.NodeAddress{
+					{
+						Kind:  api.NodeLegacyHostIP,
+						Value: "something",
+					},
+				},
 			},
 		},
 	}
@@ -1944,7 +1954,12 @@ func TestValidateMinion(t *testing.T) {
 				Labels: validSelector,
 			},
 			Status: api.NodeStatus{
-				HostIP: "something",
+				Addresses: []api.NodeAddress{
+					{
+						Kind:  api.NodeLegacyHostIP,
+						Value: "something",
+					},
+				},
 			},
 		},
 		"invalid-labels": {
@@ -2073,7 +2088,12 @@ func TestValidateMinionUpdate(t *testing.T) {
 				Labels: map[string]string{"bar": "foo"},
 			},
 			Status: api.NodeStatus{
-				HostIP: "1.2.3.4",
+				Addresses: []api.NodeAddress{
+					{
+						Kind:  api.NodeLegacyHostIP,
+						Value: "1.2.3.4",
+					},
+				},
 			},
 		}, api.Node{
 			ObjectMeta: api.ObjectMeta{
