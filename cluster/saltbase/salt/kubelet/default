@@ -16,6 +16,9 @@
 {% if grains.minion_ip is defined -%}
   {% set hostname_override = " --hostname_override=" + grains.minion_ip -%}
 {% endif -%}
+{% if grains.hostname_override is defined -%}
+  {% set hostname_override = " --hostname_override=" + grains.hostname_override -%}
+{% endif -%}
 
 {% set auth_path = "--auth_path=/var/lib/kubelet/kubernetes_auth" -%}
 

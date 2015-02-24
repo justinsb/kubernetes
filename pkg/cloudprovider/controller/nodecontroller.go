@@ -352,7 +352,17 @@ func (s *NodeController) DoCheck(node *api.Node) []api.NodeCondition {
 
 // checkNodeReady checks raw node ready condition, without transition timestamp set.
 func (s *NodeController) checkNodeReady(node *api.Node) *api.NodeCondition {
-	switch status, err := s.kubeletClient.HealthCheck(node.Name); {
+	healthCheckHost, err := s.getHealthCheckHostForNode(node)
+	if err != nil {
+		glog.Errorf("NodeController: failed to find health-check target for node %s: %v", node.Name, err)
+		return &api.NodeCondition{
+			Kind:   api.NodeReady,
+			Status: api.ConditionUnknown,
+			Reason: fmt.Sprintf("Node health check error: %v", err),
+		}
+	}
+
+	switch status, err := s.kubeletClient.HealthCheck(healthCheckHost); {
 	case err != nil:
 		glog.V(2).Infof("NodeController: node %s health check error: %v", node.Name, err)
 		return &api.NodeCondition{

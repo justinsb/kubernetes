@@ -89,7 +89,10 @@ else
     gsutil -m cp gs://kubernetes-release/ci/${GITHASH}/kubernetes.tar.gz gs://kubernetes-release/ci/${GITHASH}/kubernetes-test.tar.gz .
 fi
 
-md5sum kubernetes*.tar.gz
+MD5=md5sum
+which ${MD5} || MD5=md5
+
+${MD5} kubernetes*.tar.gz
 tar -xzf kubernetes.tar.gz
 tar -xzf kubernetes-test.tar.gz
 cd kubernetes

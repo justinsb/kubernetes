@@ -238,3 +238,7 @@ func (v *VagrantCloud) List(filter string) ([]string, error) {
 func (v *VagrantCloud) GetNodeResources(name string) (*api.NodeResources, error) {
 	return nil, nil
 }
+
+func (v *VagrantCloud) GetHealthCheckHost(name string) (string, error) {
+	return name, nil
+}

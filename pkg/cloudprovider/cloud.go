@@ -65,6 +65,9 @@ type Instances interface {
 	List(filter string) ([]string, error)
 	// GetNodeResources gets the resources for a particular node
 	GetNodeResources(name string) (*api.NodeResources, error)
+	// Host to use to health-check a given node
+	// TODO: Replace this once we have a richer model for api.Node
+	GetHealthCheckHost(name string) (string, error)
 }
 
 // Zone represents the location of a particular machine.

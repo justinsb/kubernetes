@@ -30,10 +30,11 @@ IAM_PROFILE="kubernetes"
 
 LOG="/dev/null"
 
-MASTER_NAME="${INSTANCE_PREFIX}-master.$ZONE.compute.internal"
+MASTER_NAME="${INSTANCE_PREFIX}-master"
+MINION_NAMES=($(eval echo ${INSTANCE_PREFIX}-minion-{1..${NUM_MINIONS}}))
+
 MASTER_TAG="${INSTANCE_PREFIX}-master"
 MINION_TAG="${INSTANCE_PREFIX}-minion"
-MINION_NAMES=($(eval echo ${INSTANCE_PREFIX}-minion-{1..${NUM_MINIONS}}.$ZONE.compute.internal))
 MINION_IP_RANGES=($(eval echo "10.244.{1..${NUM_MINIONS}}.0/24"))
 MINION_SCOPES=""
 POLL_SLEEP_INTERVAL=3

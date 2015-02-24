@@ -28,6 +28,7 @@ grains:
     - kubernetes-pool
   cbr-cidr: $MINION_IP_RANGE
   cloud: aws
+  hostname_override: $HOSTNAME_OVERRIDE
 EOF
 
 # Install Salt

@@ -326,7 +326,7 @@ function kube-up {
     --iam-instance-profile Name=$IAM_PROFILE \
     --instance-type $MASTER_SIZE \
     --subnet-id $SUBNET_ID \
-    --private-ip-address 172.20.0.9 \
+    --private-ip-address $MASTER_INTERNAL_IP \
     --key-name kubernetes \
     --security-group-ids $SEC_GROUP_ID \
     --associate-public-ip-address \
@@ -392,6 +392,7 @@ function kube-up {
       echo "#! /bin/bash"
       echo "SALT_MASTER='${MASTER_INTERNAL_IP}'"
       echo "MINION_IP_RANGE='${MINION_IP_RANGES[$i]}'"
+      echo "HOSTNAME_OVERRIDE='${MINION_NAMES[$i]}'"
       grep -v "^#" "${KUBE_ROOT}/cluster/aws/templates/salt-minion.sh"
     ) > "${KUBE_TEMP}/minion-start-${i}.sh"
     minion_id=$($AWS_CMD run-instances \
@@ -407,6 +408,9 @@ function kube-up {
 
     add-tag $minion_id Name ${MINION_NAMES[$i]}
     add-tag $minion_id Role $MINION_TAG
+    # The kubernetes.name tag is used with the minion regex
+    # so this should match NODE_INSTANCE_PREFIX on the master
+    add-tag $minion_id kubernetes.name "${INSTANCE_PREFIX}-minion-${i}"
 
     sleep 3
     $AWS_CMD modify-instance-attribute --instance-id $minion_id --source-dest-check '{"Value": false}' > $LOG

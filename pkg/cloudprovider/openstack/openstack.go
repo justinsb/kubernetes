@@ -347,6 +347,10 @@ func (i *Instances) GetNodeResources(name string) (*api.NodeResources, error) {
 	return rsrc, nil
 }
 
+func (i *Instances) GetHealthCheckHost(name string) (string, error) {
+	return name, nil
+}
+
 func (os *OpenStack) Clusters() (cloudprovider.Clusters, bool) {
 	return nil, false
 }
