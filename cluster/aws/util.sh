@@ -486,14 +486,41 @@ function kube-up {
   set +e
 
   # Basic sanity checking
-  for i in ${KUBE_MINION_IP_ADDRESSES[@]}; do
-    # Make sure docker is installed
-    ssh -oStrictHostKeyChecking=no ubuntu@$i -i ${AWS_SSH_KEY} which docker > $LOG 2>&1
-    if [ "$?" != "0" ]; then
-      echo "Docker failed to install on $i. Your cluster is unlikely to work correctly."
-      echo "Please run ./cluster/aws/kube-down.sh and re-create the cluster. (sorry!)"
-      exit 1
-    fi
+  local rc # Capture return code without exiting because of errexit bash option
+  for (( i=0; i<${#MINION_NAMES[@]}; i++)); do
+      # Make sure docker is installed and working.
+      local attempt=0
+      while true; do
+        local minion_name=${MINION_NAMES[$i]}
+        local minion_ip=${KUBE_MINION_IP_ADDRESSES[$i]}
+        echo -n Attempt "$(($attempt+1))" to check Docker on node "${minion_name} @ ${minion_ip}" ...
+        local output=$(ssh -oStrictHostKeyChecking=no ubuntu@$i -i ${AWS_SSH_KEY} sudo docker ps -a 2>/dev/null)
+        if [[ -z "${output}" ]]; then
+          if (( attempt > 9 )); then
+            echo
+            echo -e "${color_red}Docker failed to install on node ${minion_name}. Your cluster is unlikely" >&2
+            echo "to work correctly. Please run ./cluster/kube-down.sh and re-create the" >&2
+            echo -e "cluster. (sorry!)${color_norm}" >&2
+            exit 1
+          fi
+        elif [[ "${output}" != *"kubernetes/pause"* ]]; then
+          if (( attempt > 9 )); then
+            echo
+            echo -e "${color_red}Failed to observe kubernetes/pause on node ${minion_name}. Your cluster is unlikely" >&2
+            echo "to work correctly. Please run ./cluster/kube-down.sh and re-create the" >&2
+            echo -e "cluster. (sorry!)${color_norm}" >&2
+            exit 1
+          fi
+        else
+          echo -e " ${color_green}[working]${color_norm}"
+          break
+        fi
+        echo -e " ${color_yellow}[not working yet]${color_norm}"
+        # Start Docker, in case it failed to start.
+        ssh -oStrictHostKeyChecking=no ubuntu@$i -i ${AWS_SSH_KEY} sudo service docker start > $LOG 2>&1
+        attempt=$(($attempt+1))
+        sleep 30
+      done
   done
 
   echo
