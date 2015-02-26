@@ -350,6 +350,56 @@ func (s *NodeController) DoCheck(node *api.Node) []api.NodeCondition {
 	return conditions
 }
 
+// Finds the NodeAddress which maximizes scoreFn
+func findBest(candidates []api.NodeAddress, scoreFn func(*api.NodeAddress) int) *api.NodeAddress {
+	var best *api.NodeAddress
+	bestScore := 0
+
+	for i := range candidates {
+		score := scoreFn(&candidates[i])
+		if best != nil && score < bestScore {
+			continue
+		}
+
+		best = &candidates[i]
+		bestScore = score
+	}
+
+	return best
+}
+
+// Scoring function to pick a NodeAddress for health-checking
+func scoreForHealthCheck(a *api.NodeAddress) int {
+	score := 0
+	switch a.Kind {
+	case api.NodeInternalIPv4:
+		score += 4
+	case api.NodeExternalIPv4:
+		score += 3
+	case api.NodeLegacyHostIP:
+		score += 2
+	case api.NodeHostName:
+		score += 1
+	}
+	return score
+}
+
+// findHealthCheckHostForNode picks the best host-address for a node
+func (s *NodeController) pickNodeAddress(node *api.Node, scoreFn func(*api.NodeAddress) int) (string, error) {
+	// TODO: When can we assume node.Status is set??
+	nodeAddresses, err := s.getNodeAddresses(node)
+	if err != nil {
+		// TODO: When should we log?
+		return "", err
+	}
+
+	nodeAddress := findBest(nodeAddresses, scoreFn)
+	if nodeAddress == nil {
+		return "", nil
+	}
+	return nodeAddress.Value, nil
+}
+
 // checkNodeReady checks raw node ready condition, without transition timestamp set.
 func (s *NodeController) checkNodeReady(node *api.Node) *api.NodeCondition {
 	healthCheckHost, err := s.getHealthCheckHostForNode(node)
