@@ -472,12 +472,45 @@ function kube-up {
 
   echo "Kubernetes cluster created."
 
+<<<<<<< HEAD
   local kube_cert="kubecfg.crt"
   local kube_key="kubecfg.key"
   local ca_cert="kubernetes.ca.crt"
   # TODO use token instead of kube_auth
   local kube_auth="kubernetes_auth"
 
+=======
+  sleep 5
+
+  # Don't bail on errors, we want to be able to print some info.
+  set +e
+
+  # Basic sanity checking
+  for i in ${KUBE_MINION_IP_ADDRESSES[@]}; do
+    # Make sure docker is installed
+    ssh -oStrictHostKeyChecking=no ubuntu@$i -i ${AWS_SSH_KEY} which docker > $LOG 2>&1
+    if [ "$?" != "0" ]; then
+      echo "Docker failed to install on $i. Your cluster is unlikely to work correctly."
+      echo "Please run ./cluster/aws/kube-down.sh and re-create the cluster. (sorry!)"
+      exit 1
+    fi
+  done
+
+  echo
+  echo -e "${color_green}Kubernetes cluster is running.  The master is running at:"
+  echo
+  echo -e "${color_yellow}  https://${KUBE_MASTER_IP}"
+  echo
+  echo -e "${color_green}The user name and password to use is located in ${config_dir}/${kube_auth}.${color_norm}"
+  echo
+
+  local kube_cert="kubecfg.crt"
+  local kube_key="kubecfg.key"
+  local ca_cert="kubernetes.ca.crt"
+  # TODO use token instead of kube_auth
+  local kube_auth="kubernetes_auth"
+
+>>>>>>> Update to new kube configurtion file
   local kubectl="${KUBE_ROOT}/cluster/kubectl.sh"
   local context="${INSTANCE_PREFIX}"
   local user="${INSTANCE_PREFIX}-admin"
@@ -491,11 +524,14 @@ function kube-up {
     ssh -oStrictHostKeyChecking=no -i ${AWS_SSH_KEY} ubuntu@${KUBE_MASTER_IP} sudo cat /srv/kubernetes/kubecfg.crt >"${config_dir}/${kube_cert}" 2>$LOG
     ssh -oStrictHostKeyChecking=no -i ${AWS_SSH_KEY} ubuntu@${KUBE_MASTER_IP} sudo cat /srv/kubernetes/kubecfg.key >"${config_dir}/${kube_key}" 2>$LOG
     ssh -oStrictHostKeyChecking=no -i ${AWS_SSH_KEY} ubuntu@${KUBE_MASTER_IP} sudo cat /srv/kubernetes/ca.crt >"${config_dir}/${ca_cert}" 2>$LOG
+<<<<<<< HEAD
 
     "${kubectl}" config set-cluster "${context}" --server="https://${KUBE_MASTER_IP}" --certificate-authority="${config_dir}/${ca_cert}" --global
     "${kubectl}" config set-credentials "${user}" --auth-path="${config_dir}/${kube_auth}" --global
     "${kubectl}" config set-context "${context}" --cluster="${context}" --user="${user}" --global
     "${kubectl}" config use-context "${context}" --global
+=======
+>>>>>>> Update to new kube configurtion file
 
     cat << EOF > "${config_dir}/${kube_auth}"
 {
