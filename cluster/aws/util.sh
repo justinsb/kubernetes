@@ -503,14 +503,15 @@ function kube-up {
             echo -e "cluster. (sorry!)${color_norm}" >&2
             exit 1
           fi
-        elif [[ "${output}" != *"kubernetes/pause"* ]]; then
-          if (( attempt > 9 )); then
-            echo
-            echo -e "${color_red}Failed to observe kubernetes/pause on node ${minion_name}. Your cluster is unlikely" >&2
-            echo "to work correctly. Please run ./cluster/kube-down.sh and re-create the" >&2
-            echo -e "cluster. (sorry!)${color_norm}" >&2
-            exit 1
-          fi
+        # TODO: Reintroduce this (where does this container come from?)
+#        elif [[ "${output}" != *"kubernetes/pause"* ]]; then
+#          if (( attempt > 9 )); then
+#            echo
+#            echo -e "${color_red}Failed to observe kubernetes/pause on node ${minion_name}. Your cluster is unlikely" >&2
+#            echo "to work correctly. Please run ./cluster/kube-down.sh and re-create the" >&2
+#            echo -e "cluster. (sorry!)${color_norm}" >&2
+#            exit 1
+#          fi
         else
           echo -e " ${color_green}[working]${color_norm}"
           break
