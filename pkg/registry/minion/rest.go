@@ -145,7 +145,7 @@ func (rs *REST) ResourceLocation(ctx api.Context, id string) (string, error) {
 		return "", err
 	}
 	internalAddress := minion.Status.InternalAddress()
-	if internalAddress = "" {
+	if internalAddress == "" {
 		return "", errors.New("Cannot determine address for minion")
 	}
 	// TODO: Minion webservers should be secure!

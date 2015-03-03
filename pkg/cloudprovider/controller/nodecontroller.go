@@ -267,7 +267,7 @@ func latestReadyTime(node *api.Node) util.Time {
 
 // PopulateAddresses gets the NodeAddresses for the given node
 func (s *NodeController) getNodeAddresses(node *api.Node) ([]api.NodeAddress, error) {
-	addresses := api.NodeAddress[] {}
+	addresses := []api.NodeAddress{}
 	if s.isRunningCloudProvider() {
 		instances, ok := s.cloud.Instances()
 		if !ok {
