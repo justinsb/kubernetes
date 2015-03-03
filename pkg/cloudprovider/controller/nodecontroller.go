@@ -271,14 +271,13 @@ func (s *NodeController) getNodeAddresses(node *api.Node) ([]api.NodeAddress, er
 	if s.isRunningCloudProvider() {
 		instances, ok := s.cloud.Instances()
 		if !ok {
-			return nodes, ErrCloudInstance
+			return nil, ErrCloudInstance
 		}
-		hostIP, err := instances.IPAddress(node.Name)
+		nodeAddresses, err := instances.GetNodeAddresses(node.Name)
 		if err != nil {
 			glog.Errorf("error getting instance ip address for %s: %v", node.Name, err)
 		} else {
-			address := api.NodeAddress{Kind: api.NodeLegacyHostIP, Value: hostIP.String()}
-			addresses = append(addresses, address)
+			addresses = append(addresses, nodeAddresses...)
 		}
 	} else {
 		addr := net.ParseIP(node.Name)
@@ -302,7 +301,7 @@ func (s *NodeController) getNodeAddresses(node *api.Node) ([]api.NodeAddress, er
 
 // PopulateIPs queries IPs for given list of nodes.
 func (s *NodeController) PopulateAddresses(nodes *api.NodeList) (*api.NodeList, error) {
-	var instances Instances
+	var instances cloudprovider.Instances
 	if s.isRunningCloudProvider() {
 		var ok bool
 		instances, ok = s.cloud.Instances()
@@ -405,22 +404,6 @@ func findBest(candidates []api.NodeAddress, scoreFn func(*api.NodeAddress) int) 
 	return best
 }
 
-// Scoring function to pick a NodeAddress for health-checking
-func scoreForHealthCheck(a *api.NodeAddress) int {
-	score := 0
-	switch a.Kind {
-	case api.NodeInternalIPv4:
-		score += 4
-	case api.NodeExternalIPv4:
-		score += 3
-	case api.NodeLegacyHostIP:
-		score += 2
-	case api.NodeHostName:
-		score += 1
-	}
-	return score
-}
-
 // findHealthCheckHostForNode picks the best host-address for a node
 func (s *NodeController) pickNodeAddress(node *api.Node, scoreFn func(*api.NodeAddress) int) (string, error) {
 	// TODO: When can we assume node.Status is set??
@@ -437,13 +420,34 @@ func (s *NodeController) pickNodeAddress(node *api.Node, scoreFn func(*api.NodeA
 	return nodeAddress.Value, nil
 }
 
+// Scoring function to pick a NodeAddress for health-checking
+func scoreForHealthCheck(a *api.NodeAddress) int {
+	score := 0
+	switch a.Kind {
+	case api.NodeInternalIPv4:
+		score += 4
+	case api.NodeExternalIPv4:
+		score += 3
+	case api.NodeLegacyHostIP:
+		score += 2
+	case api.NodeHostName:
+		score += 1
+	}
+	return score
+}
+
+// getHealthCheckHostForNode picks a host to use for a health check
+func (s *NodeController) getHealthCheckHostForNode(node *api.Node) (string, error) {
+	return s.pickNodeAddress(node, scoreForHealthCheck)
+}
+
 // checkNodeReady checks raw node ready condition, without transition timestamp set.
 func (s *NodeController) checkNodeReady(node *api.Node) *api.NodeCondition {
 	healthCheckHost, err := s.getHealthCheckHostForNode(node)
 	if err != nil {
 		glog.Errorf("NodeController: failed to find health-check target for node %s: %v", node.Name, err)
 		return &api.NodeCondition{
-			Kind:   api.NodeReady,
+			Type:   api.NodeReady,
 			Status: api.ConditionUnknown,
 			Reason: fmt.Sprintf("Node health check error: %v", err),
 		}

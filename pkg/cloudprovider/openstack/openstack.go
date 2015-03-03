@@ -299,17 +299,17 @@ func getAddressByName(api *gophercloud.ServiceClient, name string) (string, erro
 	return s, nil
 }
 
-func (i *Instances) IPAddress(name string) (net.IP, error) {
-	glog.V(2).Infof("IPAddress(%v) called", name)
+func (i *Instances) GetNodeAddresses(name string) ([]api.NodeAddress, error) {
+	glog.V(2).Infof("GetNodeAddresses(%v) called", name)
 
 	ip, err := getAddressByName(i.compute, name)
 	if err != nil {
 		return nil, err
 	}
 
-	glog.V(2).Infof("IPAddress(%v) => %v", name, ip)
+	glog.V(2).Infof("GetNodeAddresses(%v) => %v", name, ip)
 
-	return net.ParseIP(ip), err
+	return api.ConvertLegacyIPToNodeAddresses(ip), nil
 }
 
 // ExternalID returns the cloud provider ID of the specified instance.

@@ -130,8 +130,8 @@ func (v *OVirtCloud) Zones() (cloudprovider.Zones, bool) {
 	return nil, false
 }
 
-// IPAddress returns the address of a particular machine instance
-func (v *OVirtCloud) IPAddress(name string) (net.IP, error) {
+// GetNodeAddresses returns the address of a particular machine instance
+func (v *OVirtCloud) GetNodeAddresses(name string) ([]api.NodeAddress, error) {
 	instance, err := v.fetchInstance(name)
 	if err != nil {
 		return nil, err
@@ -152,7 +152,7 @@ func (v *OVirtCloud) IPAddress(name string) (net.IP, error) {
 		address = resolved[0]
 	}
 
-	return address, nil
+	return api.ConvertLegacyIPToNodeAddresses(address.String()), nil
 }
 
 // ExternalID returns the cloud provider ID of the specified instance.
