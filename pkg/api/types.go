@@ -885,7 +885,6 @@ func (self *NodeStatus) InternalAddress() string {
 	return internalAddresses[0].Value
 }
 
-
 func (self *NodeStatus) LegacyHostIP() string {
 	addresses := self.addressesOfKind(NodeLegacyHostIP)
 	if len(addresses) == 0 {
@@ -898,9 +897,9 @@ func (self *NodeStatus) LegacyHostIP() string {
 		addresses = self.addressesOfKind(NodeInternalIPv4)
 	}
 	if len(addresses) == 0 {
-    	return ""
-    }
-    return addresses[0].Value
+		return ""
+	}
+	return addresses[0].Value
 }
 
 // NodeResources is an object for conveying resource information about a node.
@@ -1462,13 +1461,12 @@ const (
 	PortHeader = "port"
 )
 
-
 // A helper function (that we expect to deprecate) that builds NodeAddresses
-func ConvertLegacyIPToNodeAddresses(ip string) ([]NodeAddress) {
+func ConvertLegacyIPToNodeAddresses(ip string) []NodeAddress {
 	addresses := []NodeAddress{}
 	if ip != "" {
 		ipAddr := net.ParseIP(ip)
-		address := NodeAddress{ Kind: NodeLegacyHostIP, Value: ipAddr.String() }
+		address := NodeAddress{Kind: NodeLegacyHostIP, Value: ipAddr.String()}
 		addresses = append(addresses, address)
 	}
 	return addresses
