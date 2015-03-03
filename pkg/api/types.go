@@ -21,6 +21,8 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/types"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
+
+	"github.com/golang/glog"
 )
 
 // Common string formats
@@ -868,6 +870,17 @@ func (self *NodeStatus) InternalAddresses() []NodeAddress {
 		addresses = self.addressesOfKind(NodeLegacyHostIP)
 	}
 	return addresses
+}
+
+func (self *NodeStatus) InternalAddress() string {
+	internalAddresses := minion.Status.InternalAddresses()
+	if len(internalAddresses) == 0 {
+		return ""
+	}
+	if len(internalAddresses) > 1 {
+		glog.Infof("Making arbitrary choice of internal addresses for node: %v", internalAddresses)
+	}
+	return internalAddresses[0].Value
 }
 
 // NodeResources is an object for conveying resource information about a node.
