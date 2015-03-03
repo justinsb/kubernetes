@@ -846,6 +846,16 @@ type NodeAddress struct {
 	Value string          `json:"value"`
 }
 
+func (self *NodeStatus) AddressesOfKind(kind NodeAddressKind) []NodeAddress {
+	ret := make([]NodeAddress, 0, len(self.Addresses))
+	for i := range self.Addresses {
+		if self.Addresses[i].Kind == kind {
+			ret = append(ret, self.Addresses[i])
+		}
+	}
+	return ret
+}
+
 // NodeResources is an object for conveying resource information about a node.
 // see https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/resources.md for more details.
 // TODO: Use ResourceList instead?

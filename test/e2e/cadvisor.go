@@ -17,9 +17,11 @@ limitations under the License.
 package e2e
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 
 	. "github.com/onsi/ginkgo"
@@ -49,28 +51,34 @@ func CheckCadvisorHealthOnAllNodes(c *client.Client, timeout time.Duration) {
 	By("getting list of nodes")
 	nodeList, err := c.Nodes().List()
 	expectNoError(err)
-	var errors []error
+	var errs []error
 	retries := maxRetries
 	for {
-		errors = []error{}
+		errs = []error{}
 		for _, node := range nodeList.Items {
 			// cadvisor is not accessible directly unless its port (4194 by default) is exposed.
 			// Here, we access '/stats/' REST endpoint on the kubelet which polls cadvisor internally.
-			statsResource := fmt.Sprintf("api/v1beta1/proxy/minions/%s/stats/", node.Name)
-			By(fmt.Sprintf("Querying stats from node %s using url %s", node.Name, statsResource))
+
+			addresses := node.Status.AddressesOfKind(api.NodeInternalIPv4)
+			if len(addresses) == 0 {
+				errs = append(errs, errors.New("Cannot determine internal IP"))
+				continue
+			}
+			statsResource := fmt.Sprintf("api/v1beta1/proxy/minions/%s/stats/", addresses[0].Value)
+			By(fmt.Sprintf("Querying stats from node %s using url %s", addresses[0].Value, statsResource))
 			_, err = c.Get().AbsPath(statsResource).Timeout(timeout).Do().Raw()
 			if err != nil {
-				errors = append(errors, err)
+				errs = append(errs, err)
 			}
 		}
-		if len(errors) == 0 {
+		if len(errs) == 0 {
 			return
 		}
 		if retries--; retries <= 0 {
 			break
 		}
-		Logf("failed to retrieve kubelet stats -\n %v", errors)
+		Logf("failed to retrieve kubelet stats -\n %v", errs)
 		time.Sleep(sleepDuration)
 	}
-	Failf("Failed after retrying %d times for cadvisor to be healthy on all nodes. Errors:\n%v", maxRetries, errors)
+	Failf("Failed after retrying %d times for cadvisor to be healthy on all nodes. Errors:\n%v", maxRetries, errs)
 }
