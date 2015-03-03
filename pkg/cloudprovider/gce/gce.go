@@ -421,10 +421,6 @@ func (gce *GCECloud) GetNodeResources(name string) (*api.NodeResources, error) {
 	}
 }
 
-func (gce *GCECloud) GetHealthCheckHost(name string) (string, error) {
-	return name, nil
-}
-
 func (gce *GCECloud) GetZone() (cloudprovider.Zone, error) {
 	region, err := getGceRegion(gce.zone)
 	if err != nil {

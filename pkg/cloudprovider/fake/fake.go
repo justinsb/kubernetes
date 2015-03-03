@@ -141,7 +141,3 @@ func (f *FakeCloud) GetNodeResources(name string) (*api.NodeResources, error) {
 	f.addCall("get-node-resources")
 	return f.NodeResources, f.Err
 }
-
-func (v *FakeCloud) GetHealthCheckHost(name string) (string, error) {
-	return name, nil
-}

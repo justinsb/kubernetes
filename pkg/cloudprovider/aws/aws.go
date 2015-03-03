@@ -325,19 +325,3 @@ func (aws *AWSCloud) List(filter string) ([]string, error) {
 func (aws *AWSCloud) GetNodeResources(name string) (*api.NodeResources, error) {
 	return nil, nil
 }
-
-func (aws *AWSCloud) GetHealthCheckHost(name string) (string, error) {
-	instance, err := aws.findInstance(name)
-	if err != nil {
-		return "", err
-	}
-
-	// TODO: Other IP addresses (both private ips & multiple ips)?
-	ipAddress := instance.PrivateIpAddress
-	ip := net.ParseIP(ipAddress)
-	if ip == nil {
-		return "", fmt.Errorf("EC2 instance had invalid private address: %s", instance.InstanceId)
-	}
-
-	return ip.String(), nil
-}
