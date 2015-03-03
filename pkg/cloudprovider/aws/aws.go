@@ -283,7 +283,7 @@ func (aws *AWSCloud) getInstancesByRegex(regex string) ([]string, error) {
 			case "pending", "running":
 				running = true
 			default:
-				glog.Errorf("unknown EC2 instance state: %s", instance.State)
+				glog.Errorf("unknown EC2 instance state: %s", instance.State.Name)
 				running = false
 			}
 
