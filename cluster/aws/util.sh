@@ -482,11 +482,6 @@ function kube-up {
   done
 
   echo "Kubernetes cluster created."
-  local kube_cert="kubecfg.crt"
-  local kube_key="kubecfg.key"
-  local ca_cert="kubernetes.ca.crt"
-  # TODO use token instead of kube_auth
-  local kube_auth="kubernetes_auth"
 
   local kube_cert="kubecfg.crt"
   local kube_key="kubecfg.key"
@@ -507,6 +502,11 @@ function kube-up {
     ssh -oStrictHostKeyChecking=no -i ${AWS_SSH_KEY} ubuntu@${KUBE_MASTER_IP} sudo cat /srv/kubernetes/kubecfg.crt >"${config_dir}/${kube_cert}" 2>$LOG
     ssh -oStrictHostKeyChecking=no -i ${AWS_SSH_KEY} ubuntu@${KUBE_MASTER_IP} sudo cat /srv/kubernetes/kubecfg.key >"${config_dir}/${kube_key}" 2>$LOG
     ssh -oStrictHostKeyChecking=no -i ${AWS_SSH_KEY} ubuntu@${KUBE_MASTER_IP} sudo cat /srv/kubernetes/ca.crt >"${config_dir}/${ca_cert}" 2>$LOG
+
+    "${kubectl}" config set-cluster "${context}" --server="https://${KUBE_MASTER_IP}" --certificate-authority="${config_dir}/${ca_cert}" --global
+    "${kubectl}" config set-credentials "${user}" --auth-path="${config_dir}/${kube_auth}" --global
+    "${kubectl}" config set-context "${context}" --cluster="${context}" --user="${user}" --global
+    "${kubectl}" config use-context "${context}" --global
 
     cat << EOF > "${config_dir}/${kube_auth}"
 {
