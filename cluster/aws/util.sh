@@ -138,6 +138,13 @@ function find-release-tars {
   fi
 }
 
+# For compatability with GCE.  We don't use projects
+#
+# Vars set:
+function detect-project () {
+  return
+}
+
 # Take the local tar files and upload them to S3.  They will then be
 # downloaded by the master as part of the start up script for the master.
 #
@@ -368,11 +375,15 @@ function kube-up {
     local output
     output=$(ssh -oStrictHostKeyChecking=no -i ${AWS_SSH_KEY} ubuntu@${KUBE_MASTER_IP} pgrep salt-master 2> $LOG) || output=""
     if [[ -z "${output}" ]]; then
-      if (( attempt > 30 )); then
+      if (( attempt > 60 )); then
         echo
         echo -e "${color_red}salt-master failed to start on ${KUBE_MASTER_IP}. Your cluster is unlikely" >&2
         echo "to work correctly. Please run ./cluster/kube-down.sh and re-create the" >&2
         echo -e "cluster. (sorry!)${color_norm}" >&2
+
+        # Show processes; this often happens when the apt-get installation is super-slow
+        ssh -oStrictHostKeyChecking=no -i ${AWS_SSH_KEY} ubuntu@${KUBE_MASTER_IP}
+
         exit 1
       fi
     else
@@ -605,6 +616,39 @@ function kube-down {
     $AWS_CMD delete-vpc --vpc-id $vpc_id > $LOG
   fi
 }
+
+
+# Update a kubernetes cluster with latest source
+function kube-push {
+  detect-project
+  detect-master
+
+  # Make sure we have the tar files staged on Google Storage
+  find-release-tars
+  upload-server-tars
+
+  (
+    echo "#! /bin/bash"
+    echo "mkdir -p /var/cache/kubernetes-install"
+    echo "cd /var/cache/kubernetes-install"
+    echo "readonly SERVER_BINARY_TAR_URL='https://s3-${ZONE}.amazonaws.com/${SERVER_BINARY_TAR_URL}'"
+    echo "readonly SALT_TAR_URL='https://s3-${ZONE}.amazonaws.com/${SALT_TAR_URL}'"
+    grep -v "^#" "${KUBE_ROOT}/cluster/aws/templates/download-release.sh"
+    echo "echo Executing configuration"
+    echo "sudo salt '*' mine.update"
+    echo "sudo salt --force-color '*' state.highstate"
+  ) | ssh -oStrictHostKeyChecking=no -i ${AWS_SSH_KEY} ubuntu@${KUBE_MASTER_IP} sudo bash
+
+  get-password
+
+  echo
+  echo "Kubernetes cluster is running.  The master is running at:"
+  echo
+  echo "  https://${KUBE_MASTER_IP}"
+  echo
+
+}
+
 
 function setup-logging-firewall {
   echo "TODO: setup logging"
