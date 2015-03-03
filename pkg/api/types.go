@@ -873,7 +873,7 @@ func (self *NodeStatus) InternalAddresses() []NodeAddress {
 }
 
 func (self *NodeStatus) InternalAddress() string {
-	internalAddresses := minion.Status.InternalAddresses()
+	internalAddresses := self.InternalAddresses()
 	if len(internalAddresses) == 0 {
 		return ""
 	}
