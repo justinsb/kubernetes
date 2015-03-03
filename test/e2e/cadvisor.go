@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 
 	. "github.com/onsi/ginkgo"
@@ -59,7 +58,8 @@ func CheckCadvisorHealthOnAllNodes(c *client.Client, timeout time.Duration) {
 			// cadvisor is not accessible directly unless its port (4194 by default) is exposed.
 			// Here, we access '/stats/' REST endpoint on the kubelet which polls cadvisor internally.
 
-			addresses := node.Status.AddressesOfKind(api.NodeInternalIPv4)
+			By(fmt.Sprintf("Node status %v", node.Status))
+			addresses := node.Status.InternalAddresses()
 			if len(addresses) == 0 {
 				errs = append(errs, errors.New("Cannot determine internal IP"))
 				continue
