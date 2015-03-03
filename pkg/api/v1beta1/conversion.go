@@ -700,7 +700,7 @@ func init() {
 				return err
 			}
 
-			out.HostIP = in.Status.HostIP
+			out.HostIP = in.Status.LegacyHostIP()
 			out.PodCIDR = in.Spec.PodCIDR
 			out.ExternalID = in.Spec.ExternalID
 			return s.Convert(&in.Spec.Capacity, &out.NodeResources.Capacity, 0)
@@ -725,7 +725,9 @@ func init() {
 				return err
 			}
 
-			out.Status.HostIP = in.HostIP
+			if in.HostIP != "" {
+				out.Status.Addresses = append(out.Status.Addresses, newer.ConvertLegacyIPToNodeAddresses(in.HostIP)...)
+			}
 			out.Spec.PodCIDR = in.PodCIDR
 			out.Spec.ExternalID = in.ExternalID
 			return s.Convert(&in.NodeResources.Capacity, &out.Spec.Capacity, 0)
