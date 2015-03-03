@@ -17,8 +17,6 @@ limitations under the License.
 package api
 
 import (
-	"net"
-
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/resource"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/types"
@@ -1465,8 +1463,7 @@ const (
 func ConvertLegacyIPToNodeAddresses(ip string) []NodeAddress {
 	addresses := []NodeAddress{}
 	if ip != "" {
-		ipAddr := net.ParseIP(ip)
-		address := NodeAddress{Kind: NodeLegacyHostIP, Value: ipAddr.String()}
+		address := NodeAddress{Kind: NodeLegacyHostIP, Value: ip}
 		addresses = append(addresses, address)
 	}
 	return addresses
