@@ -265,39 +265,76 @@ func latestReadyTime(node *api.Node) util.Time {
 	return readyTime
 }
 
-// PopulateAddresses queries NodeAddresses for given list of nodes.
-func (s *NodeController) PopulateAddresses(nodes *api.NodeList) (*api.NodeList, error) {
+// PopulateAddresses gets the NodeAddresses for the given node
+func (s *NodeController) getNodeAddresses(node *api.Node) ([]api.NodeAddress, error) {
+	addresses := api.NodeAddress[] {}
 	if s.isRunningCloudProvider() {
 		instances, ok := s.cloud.Instances()
 		if !ok {
 			return nodes, ErrCloudInstance
 		}
-		for i := range nodes.Items {
-			node := &nodes.Items[i]
-			hostIP, err := instances.IPAddress(node.Name)
+		hostIP, err := instances.IPAddress(node.Name)
+		if err != nil {
+			glog.Errorf("error getting instance ip address for %s: %v", node.Name, err)
+		} else {
+			address := api.NodeAddress{Kind: api.NodeLegacyHostIP, Value: hostIP.String()}
+			addresses = append(addresses, address)
+		}
+	} else {
+		addr := net.ParseIP(node.Name)
+		if addr != nil {
+			address := api.NodeAddress{Kind: api.NodeLegacyHostIP, Value: addr.String()}
+			node.Status.Addresses = append(node.Status.Addresses, address)
+		} else {
+			addrs, err := net.LookupIP(node.Name)
 			if err != nil {
-				glog.Errorf("error getting instance ip address for %s: %v", node.Name, err)
+				glog.Errorf("Can't get ip address of node %s: %v", node.Name, err)
+			} else if len(addrs) == 0 {
+				glog.Errorf("No ip address for node %v", node.Name)
 			} else {
-				address := api.NodeAddress{Kind: api.NodeLegacyHostIP, Value: hostIP.String()}
+				address := api.NodeAddress{Kind: api.NodeLegacyHostIP, Value: addrs[0].String()}
 				node.Status.Addresses = append(node.Status.Addresses, address)
 			}
 		}
-	} else {
-		for i := range nodes.Items {
-			node := &nodes.Items[i]
-			addr := net.ParseIP(node.Name)
-			if addr != nil {
-				address := api.NodeAddress{Kind: api.NodeLegacyHostIP, Value: addr.String()}
-				node.Status.Addresses = append(node.Status.Addresses, address)
-			} else {
-				addrs, err := lookupIP(node.Name)
-				if err != nil {
-					glog.Errorf("Can't get ip address of node %s: %v", node.Name, err)
-				} else if len(addrs) == 0 {
-					glog.Errorf("No ip address for node %v", node.Name)
-				} else {
-					address := api.NodeAddress{Kind: api.NodeLegacyHostIP, Value: addrs[0].String()}
-					node.Status.Addresses = append(node.Status.Addresses, address)
+	}
+	return addresses, nil
+}
+
+// PopulateIPs queries IPs for given list of nodes.
+func (s *NodeController) PopulateAddresses(nodes *api.NodeList) (*api.NodeList, error) {
+	var instances Instances
+	if s.isRunningCloudProvider() {
+		var ok bool
+		instances, ok = s.cloud.Instances()
+		if !ok {
+			return nodes, ErrCloudInstance
+		}
+	}
+
+	for i := range nodes.Items {
+		node := &nodes.Items[i]
+
+		instanceID, err := instances.ExternalID(node.Name)
+		if err != nil {
+			glog.Errorf("error getting instance id for %s: %v", node.Name, err)
+		} else {
+			node.Spec.ExternalID = instanceID
+		}
+
+		nodeAddresses, err := s.getNodeAddresses(node)
+		if err != nil {
+			glog.Errorf("error getting instance ip address for %s: %v", node.Name, err)
+		} else {
+			for _, add := range nodeAddresses {
+				exists := false
+				for _, existing := range node.Status.Addresses {
+					if existing.Value == add.Value && existing.Kind == add.Kind {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					node.Status.Addresses = append(node.Status.Addresses, add)
 				}
 			}
 		}
