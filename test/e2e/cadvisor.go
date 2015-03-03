@@ -17,7 +17,6 @@ limitations under the License.
 package e2e
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -50,35 +49,28 @@ func CheckCadvisorHealthOnAllNodes(c *client.Client, timeout time.Duration) {
 	By("getting list of nodes")
 	nodeList, err := c.Nodes().List()
 	expectNoError(err)
-	var errs []error
+	var errors []error
 	retries := maxRetries
 	for {
-		errs = []error{}
+		errors = []error{}
 		for _, node := range nodeList.Items {
 			// cadvisor is not accessible directly unless its port (4194 by default) is exposed.
 			// Here, we access '/stats/' REST endpoint on the kubelet which polls cadvisor internally.
-
-			By(fmt.Sprintf("Node status %v", node.Status))
-			addresses := node.Status.InternalAddresses()
-			if len(addresses) == 0 {
-				errs = append(errs, errors.New("Cannot determine internal IP"))
-				continue
-			}
-			statsResource := fmt.Sprintf("api/v1beta1/proxy/minions/%s/stats/", addresses[0].Value)
-			By(fmt.Sprintf("Querying stats from node %s using url %s", addresses[0].Value, statsResource))
+			statsResource := fmt.Sprintf("api/v1beta1/proxy/minions/%s/stats/", node.Name)
+			By(fmt.Sprintf("Querying stats from node %s using url %s", node.Name, statsResource))
 			_, err = c.Get().AbsPath(statsResource).Timeout(timeout).Do().Raw()
 			if err != nil {
-				errs = append(errs, err)
+				errors = append(errors, err)
 			}
 		}
-		if len(errs) == 0 {
+		if len(errors) == 0 {
 			return
 		}
 		if retries--; retries <= 0 {
 			break
 		}
-		Logf("failed to retrieve kubelet stats -\n %v", errs)
+		Logf("failed to retrieve kubelet stats -\n %v", errors)
 		time.Sleep(sleepDuration)
 	}
-	Failf("Failed after retrying %d times for cadvisor to be healthy on all nodes. Errors:\n%v", maxRetries, errs)
+	Failf("Failed after retrying %d times for cadvisor to be healthy on all nodes. Errors:\n%v", maxRetries, errors)
 }
