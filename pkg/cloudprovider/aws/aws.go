@@ -225,14 +225,30 @@ func (aws *AWSCloud) IPAddress(name string) (net.IP, error) {
 		return nil, err
 	}
 
-	// TODO: Other IP addresses (both private ips & multiple ips)?
-	ipAddress := instance.PublicIpAddress
-	ip := net.ParseIP(ipAddress)
-	if ip == nil {
-		return nil, fmt.Errorf("EC2 instance had invalid public address: %s", instance.InstanceId)
+	addresses := []api.NodeAddress{}
+
+	// TODO: Other IP addresses (multiple ips)?
+	{
+		ipAddress := instance.PublicIpAddress
+		ip := net.ParseIP(ipAddress)
+		if ip == nil {
+			return nil, fmt.Errorf("EC2 instance had invalid public address: %s", instance.InstanceId)
+		}
+		address := api.NodeAddress{Kind: api.NodeExternalIPv4, Value: ip.String()}
+		addresses = append(addresses, address)
 	}
 
-	return ip, nil
+	{
+		ipAddress := instance.PrivateIpAddress
+		ip := net.ParseIP(ipAddress)
+		if ip == nil {
+			return nil, fmt.Errorf("EC2 instance had invalid private address: %s", instance.InstanceId)
+		}
+		address := api.NodeAddress{Kind: api.NodeInternalIPv4, Value: ip.String()}
+		addresses = append(addresses, address)
+	}
+
+	return addresses, nil
 }
 
 // Return a list of instances matching regex string.
