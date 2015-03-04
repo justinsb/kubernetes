@@ -30,6 +30,8 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/master/ports"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/watch"
+
+	"github.com/golang/glog"
 )
 
 // REST adapts minion into apiserver's RESTStorage model.
@@ -146,6 +148,7 @@ func (rs *REST) ResourceLocation(ctx api.Context, id string) (string, error) {
 	}
 	internalAddress := minion.Status.InternalAddress()
 	if internalAddress == "" {
+		glog.Infof("No internal address for minion with status: %v", minion.Status)
 		return "", errors.New("Cannot determine address for minion")
 	}
 	// TODO: Minion webservers should be secure!

@@ -306,6 +306,7 @@ func (aws *AWSCloud) getInstancesByRegex(regex string) ([]string, error) {
 			instances = append(instances, name)
 		}
 	}
+	glog.Infof("Found instances: %s", instances)
 	return instances, nil
 }
 
