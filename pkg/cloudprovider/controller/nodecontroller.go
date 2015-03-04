@@ -313,11 +313,13 @@ func (s *NodeController) PopulateAddresses(nodes *api.NodeList) (*api.NodeList, 
 	for i := range nodes.Items {
 		node := &nodes.Items[i]
 
-		instanceID, err := instances.ExternalID(node.Name)
-		if err != nil {
-			glog.Errorf("error getting instance id for %s: %v", node.Name, err)
-		} else {
-			node.Spec.ExternalID = instanceID
+		if instances != nil {
+			instanceID, err := instances.ExternalID(node.Name)
+			if err != nil {
+				glog.Errorf("error getting instance id for %s: %v", node.Name, err)
+			} else {
+				node.Spec.ExternalID = instanceID
+			}
 		}
 
 		nodeAddresses, err := s.getNodeAddresses(node)
