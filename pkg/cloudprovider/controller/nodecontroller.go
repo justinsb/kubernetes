@@ -283,7 +283,7 @@ func (s *NodeController) getNodeAddresses(node *api.Node) ([]api.NodeAddress, er
 		addr := net.ParseIP(node.Name)
 		if addr != nil {
 			address := api.NodeAddress{Kind: api.NodeLegacyHostIP, Value: addr.String()}
-			node.Status.Addresses = append(node.Status.Addresses, address)
+			addresses = append(addresses, address)
 		} else {
 			addrs, err := net.LookupIP(node.Name)
 			if err != nil {
@@ -292,7 +292,7 @@ func (s *NodeController) getNodeAddresses(node *api.Node) ([]api.NodeAddress, er
 				glog.Errorf("No ip address for node %v", node.Name)
 			} else {
 				address := api.NodeAddress{Kind: api.NodeLegacyHostIP, Value: addrs[0].String()}
-				node.Status.Addresses = append(node.Status.Addresses, address)
+				addresses = append(addresses, address)
 			}
 		}
 	}
