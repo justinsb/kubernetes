@@ -131,31 +131,36 @@ func TestList(t *testing.T) {
 	}
 }
 
-func TestIPAddress(t *testing.T) {
+func TestGetNodeAddresses(t *testing.T) {
 	instances := make([]ec2.Instance, 2)
 	instances[0].PrivateDNSName = "instance1"
 	instances[0].PrivateIpAddress = "192.168.0.1"
-	instances[1].PrivateDNSName = "instance2"
+	instances[0].State.Name = "running"
+	instances[1].PrivateDNSName = "instance1"
 	instances[1].PrivateIpAddress = "192.168.0.2"
+	instances[1].State.Name = "running"
 
 	aws1 := mockInstancesResp([]ec2.Instance{})
-	_, err1 := aws1.IPAddress("instance")
+	_, err1 := aws1.GetNodeAddresses("instance")
 	if err1 == nil {
 		t.Errorf("Should error when no instance found")
 	}
 
 	aws2 := mockInstancesResp(instances)
-	_, err2 := aws2.IPAddress("instance1")
+	_, err2 := aws2.GetNodeAddresses("instance1")
 	if err2 == nil {
 		t.Errorf("Should error when multiple instances found")
 	}
 
 	aws3 := mockInstancesResp(instances[0:1])
-	ip3, err3 := aws3.IPAddress("instance1")
+	addrs3, err3 := aws3.GetNodeAddresses("instance1")
 	if err3 != nil {
-		t.Errorf("Should not error when instance found")
+		t.Errorf("Should not error when instance found: %v", err3)
 	}
-	if e, a := instances[0].PrivateIpAddress, ip3.String(); e != a {
+	if len(addrs3) != 1 {
+		t.Errorf("Expected exactly one node address")
+	}
+	if e, a := instances[0].PrivateIpAddress, addrs3[0].Value; e != a {
 		t.Errorf("Expected %v, got %v", e, a)
 	}
 }

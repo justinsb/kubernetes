@@ -29,7 +29,7 @@ type FakeCloud struct {
 	Exists        bool
 	Err           error
 	Calls         []string
-	IP            net.IP
+	NodeAddresses []api.NodeAddress
 	ExtID         map[string]string
 	Machines      []string
 	NodeResources *api.NodeResources
@@ -104,11 +104,17 @@ func (f *FakeCloud) DeleteTCPLoadBalancer(name, region string) error {
 	return f.Err
 }
 
-// IPAddress is a test-spy implementation of Instances.IPAddress.
-// It adds an entry "ip-address" into the internal method call record.
-func (f *FakeCloud) IPAddress(instance string) (net.IP, error) {
-	f.addCall("ip-address")
-	return f.IP, f.Err
+// GetNodeAddresses is a test-spy implementation of Instances.GetNodeAddresses.
+// It adds an entry "get-node-addresses" into the internal method call record.
+func (f *FakeCloud) GetNodeAddresses(instance string) ([]api.NodeAddress, error) {
+	f.addCall("get-node-addresses")
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	if f.NodeAddresses == nil {
+		return []api.NodeAddress{}, nil
+	}
+	return f.NodeAddresses, nil
 }
 
 // ExternalID is a test-spy implementation of Instances.ExternalID.

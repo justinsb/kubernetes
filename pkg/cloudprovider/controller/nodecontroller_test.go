@@ -630,14 +630,7 @@ func TestPopulateNodeAddresses(t *testing.T) {
 	}{
 		{
 			nodes: &api.NodeList{Items: []api.Node{*newNode("node0"), *newNode("node1")}},
-			fakeCloud: &fake_cloud.FakeCloud{
-				NodeAddresses: []api.NodeAddress{
-					{
-						Kind:  api.NodeLegacyHostIP,
-						Value: "1.2.3.4",
-					},
-				},
-			},
+			fakeCloud: &fake_cloud.FakeCloud{ NodeAddresses: api.ConvertLegacyIPToNodeAddresses("1.2.3.4") },
 			expectedAddresses: []api.NodeAddress{
 				{
 					Kind:  api.NodeLegacyHostIP,
@@ -1029,14 +1022,7 @@ func TestSyncNodeStatus(t *testing.T) {
 				Status: probe.Success,
 				Err:    nil,
 			},
-			fakeCloud: &fake_cloud.FakeCloud{
-				NodeAddresses: []api.NodeAddress{
-					{
-						Kind:  api.NodeLegacyHostIP,
-						Value: "1.2.3.4",
-					},
-				},
-			},
+			fakeCloud: &fake_cloud.FakeCloud{ NodeAddresses: api.ConvertLegacyIPToNodeAddresses("1.2.3.4") },
 			expectedNodes: []*api.Node{
 				{
 					ObjectMeta: api.ObjectMeta{Name: "node0"},
@@ -1048,12 +1034,7 @@ func TestSyncNodeStatus(t *testing.T) {
 								Reason: "Node health check succeeded: kubelet /healthz endpoint returns ok",
 							},
 						},
-						Addresses: []api.NodeAddress{
-							{
-								Kind:  api.NodeLegacyHostIP,
-								Value: "1.2.3.4",
-							},
-						},
+						Addresses: api.ConvertLegacyIPToNodeAddresses("1.2.3.4"),
 					},
 				},
 				{
@@ -1066,12 +1047,7 @@ func TestSyncNodeStatus(t *testing.T) {
 								Reason: "Node health check succeeded: kubelet /healthz endpoint returns ok",
 							},
 						},
-						Addresses: []api.NodeAddress{
-							{
-								Kind:  api.NodeLegacyHostIP,
-								Value: "1.2.3.4",
-							},
-						},
+						Addresses: api.ConvertLegacyIPToNodeAddresses("1.2.3.4"),
 					},
 				},
 			},

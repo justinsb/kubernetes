@@ -81,12 +81,16 @@ func TestVagrantCloud(t *testing.T) {
 		t.Fatalf("Invalid instance returned")
 	}
 
-	ip, err := vagrantCloud.IPAddress(instances[0])
+	addrs, err := vagrantCloud.GetNodeAddresses(instances[0])
 	if err != nil {
 		t.Fatalf("Unexpected error, should have returned a valid IP address: %s", err)
 	}
 
-	if ip.String() != expectedInstanceIP {
+	if len(addrs) != 1 {
+		t.Fatalf("Expected exactly one NodeAddress returned")
+	}
+
+	if addrs[0].Value != expectedInstanceIP {
 		t.Fatalf("Invalid IP address returned")
 	}
 }
