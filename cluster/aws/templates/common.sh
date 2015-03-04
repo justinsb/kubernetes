@@ -14,21 +14,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Download and install release
-
-# This script assumes that the environment variable MASTER_RELEASE_TAR contains
-# the release tar to download and unpack.  It is meant to be pushed to the
-# master and run.
-
-echo "Downloading binary release tar ($SERVER_BINARY_TAR_URL)"
-download-or-bust "$SERVER_BINARY_TAR_URL"
-
-echo "Downloading binary release tar ($SALT_TAR_URL)"
-download-or-bust "$SALT_TAR_URL"
-
-echo "Unpacking Salt tree"
-rm -rf kubernetes
-tar xzf "${SALT_TAR_URL##*/}"
-
-echo "Running release install script"
-sudo kubernetes/saltbase/install.sh "${SERVER_BINARY_TAR_URL##*/}"
+# Retry a download until we get it.
+#
+# $1 is the URL to download
+download-or-bust() {
+  local -r url="$1"
+  local -r file="${url##*/}"
+  rm -f "$file"
+  until [[ -e "${1##*/}" ]]; do
+    echo "Downloading file ($SERVER_BINARY_TAR_URL)"
+    curl --ipv4 -Lo "$file" --connect-timeout 20 --retry 6 --retry-delay 10 "$1"
+    md5sum "$file"
+  done
+}
