@@ -28,8 +28,14 @@ grains:
     - kubernetes-pool
   cbr-cidr: $MINION_IP_RANGE
   cloud: aws
+EOF
+
+if [[ -n "${HOSTNAME_OVERRIDE}" ]]; then
+cat <<EOF >>/etc/salt/minion.d/grains.conf
   hostname_override: $HOSTNAME_OVERRIDE
 EOF
+fi
+
 
 # Install Salt
 #

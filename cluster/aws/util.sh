@@ -399,12 +399,18 @@ function kube-up {
 
   for (( i=0; i<${#MINION_NAMES[@]}; i++)); do
     echo "Starting Minion (${MINION_NAMES[$i]})"
+
+    # HOSTNAME_OVERRIDE must match whatever the cloud provider will report.
+    # The AWS cloud provider currently reports the private dns name
+    # We only need HOSTNAME_OVERRIDE if that is != `hostname -f`
+    HOSTNAME_OVERRIDE=""
+
     (
       # We pipe this to the ami as a startup script in the user-data field.  Requires a compatible ami
       echo "#! /bin/bash"
       echo "SALT_MASTER='${MASTER_INTERNAL_IP}'"
       echo "MINION_IP_RANGE='${MINION_IP_RANGES[$i]}'"
-      echo "HOSTNAME_OVERRIDE='${MINION_NAMES[$i]}'"
+      echo "HOSTNAME_OVERRIDE='${HOSTNAME_OVERRIDE}'"
       grep -v "^#" "${KUBE_ROOT}/cluster/aws/templates/salt-minion.sh"
     ) > "${KUBE_TEMP}/minion-start-${i}.sh"
     minion_id=$($AWS_CMD run-instances \
