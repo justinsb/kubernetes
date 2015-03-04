@@ -220,7 +220,7 @@ func (aws *AWSCloud) GetNodeAddresses(name string) ([]api.NodeAddress, error) {
 	addresses := []api.NodeAddress{}
 
 	// TODO: Other IP addresses (multiple ips)?
-	{
+	if instance.PublicIpAddress != "" {
 		ipAddress := instance.PublicIpAddress
 		ip := net.ParseIP(ipAddress)
 		if ip == nil {
@@ -230,7 +230,7 @@ func (aws *AWSCloud) GetNodeAddresses(name string) ([]api.NodeAddress, error) {
 		addresses = append(addresses, address)
 	}
 
-	{
+	if instance.PrivateIpAddress != "" {
 		ipAddress := instance.PrivateIpAddress
 		ip := net.ParseIP(ipAddress)
 		if ip == nil {
