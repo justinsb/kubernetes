@@ -180,7 +180,7 @@ func (aws *AWSCloud) getInstancesByDnsName(name string) (*ec2.Instance, error) {
 				continue
 			}
 
-			nameTag := ""
+			/*nameTag := ""
 			for _, tag := range instance.Tags {
 				if tag.Key == "Name" {
 					nameTag = tag.Value
@@ -189,6 +189,11 @@ func (aws *AWSCloud) getInstancesByDnsName(name string) (*ec2.Instance, error) {
 			}
 
 			if nameTag != name {
+				continue
+			}*/
+			if instance.PrivateDNSName != name {
+				// TODO: Should we warn here? - the filter should have caught this
+				// (this will happen in the tests if they don't fully mock the EC2 API)
 				continue
 			}
 
@@ -296,7 +301,8 @@ func (aws *AWSCloud) getInstancesByRegex(regex string) ([]string, error) {
 			// So name isn't really a unique identifier; we should do name = instance.PrivateDNSName
 			// or (even better) name = instance.InstanceId
 			// but we have to use name tag for the test e2e tests to pass..
-			name := nameTag
+			//name := nameTag
+			name := instance.PrivateDNSName
 			instances = append(instances, name)
 		}
 	}
