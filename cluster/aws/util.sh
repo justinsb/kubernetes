@@ -420,9 +420,6 @@ function kube-up {
 
     add-tag $minion_id Name ${MINION_NAMES[$i]}
     add-tag $minion_id Role $MINION_TAG
-    # The kubernetes.name tag is used with the minion regex
-    # so this should match NODE_INSTANCE_PREFIX on the master
-    add-tag $minion_id kubernetes.name "${INSTANCE_PREFIX}-minion-${i}"
 
     sleep 3
     $AWS_CMD modify-instance-attribute --instance-id $minion_id --source-dest-check '{"Value": false}' > $LOG
