@@ -299,7 +299,7 @@ func (s *NodeController) getNodeAddresses(node *api.Node) ([]api.NodeAddress, er
 	return addresses, nil
 }
 
-// PopulateIPs queries IPs for given list of nodes.
+// PopulateAddresses queries IPs for given list of nodes.
 func (s *NodeController) PopulateAddresses(nodes *api.NodeList) (*api.NodeList, error) {
 	var instances cloudprovider.Instances
 	if s.isRunningCloudProvider() {
