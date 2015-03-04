@@ -22,7 +22,7 @@ download-or-bust() {
   local -r file="${url##*/}"
   rm -f "$file"
   until [[ -e "${1##*/}" ]]; do
-    echo "Downloading file ($SERVER_BINARY_TAR_URL)"
+    echo "Downloading file ($1)"
     curl --ipv4 -Lo "$file" --connect-timeout 20 --retry 6 --retry-delay 10 "$1"
     md5sum "$file"
   done
