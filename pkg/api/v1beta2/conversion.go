@@ -646,7 +646,7 @@ func init() {
 			}
 
 			if in.HostIP != "" {
-				out.Status.Addresses = append(out.Status.Addresses, newer.ConvertLegacyIPToNodeAddresses(in.HostIP)...)
+				newer.AddToNodeAddresses(&out.Status.Addresses, newer.ConvertLegacyIPToNodeAddresses(in.HostIP)...)
 			}
 			out.Spec.PodCIDR = in.PodCIDR
 			out.Spec.ExternalID = in.ExternalID

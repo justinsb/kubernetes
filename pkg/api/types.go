@@ -1468,3 +1468,19 @@ func ConvertLegacyIPToNodeAddresses(ip string) []NodeAddress {
 	}
 	return addresses
 }
+
+// Appends the NodeAddresses to the passed-by-pointer slice, only if they do not already exist
+func AddToNodeAddresses(addresses *[]NodeAddress, addAddresses ...NodeAddress) {
+	for _, add := range addAddresses {
+		exists := false
+		for _, existing := range *addresses {
+			if existing.Value == add.Value && existing.Kind == add.Kind {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			*addresses = append(*addresses, add)
+		}
+	}
+}

@@ -326,18 +326,7 @@ func (s *NodeController) PopulateAddresses(nodes *api.NodeList) (*api.NodeList, 
 		if err != nil {
 			glog.Errorf("error getting instance ip address for %s: %v", node.Name, err)
 		} else {
-			for _, add := range nodeAddresses {
-				exists := false
-				for _, existing := range node.Status.Addresses {
-					if existing.Value == add.Value && existing.Kind == add.Kind {
-						exists = true
-						break
-					}
-				}
-				if !exists {
-					node.Status.Addresses = append(node.Status.Addresses, add)
-				}
-			}
+			api.AddToNodeAddresses(&node.Status.Addresses, nodeAddresses...)
 		}
 	}
 	return nodes, nil
