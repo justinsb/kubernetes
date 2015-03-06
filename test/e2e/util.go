@@ -38,13 +38,13 @@ const (
 )
 
 type testContextType struct {
-	kubeConfig string
-	authConfig string
-	certDir    string
-	host       string
-	repoRoot   string
-	provider   string
-	gceConfig  GCEConfig
+	kubeConfig  string
+	authConfig  string
+	certDir     string
+	host        string
+	repoRoot    string
+	provider    string
+	cloudConfig CloudConfig
 }
 
 var testContext testContextType

@@ -17,10 +17,13 @@ limitations under the License.
 package main
 
 import (
+	"fmt"
 	"os"
 	goruntime "runtime"
+	"strings"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client/clientcmd"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/cloudprovider"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/GoogleCloudPlatform/kubernetes/test/e2e"
 	"github.com/golang/glog"
@@ -31,6 +34,8 @@ var (
 	kubeConfig = flag.String(clientcmd.RecommendedConfigPathFlag, "", "Path to kubeconfig containing embeded authinfo. Will use cluster/user info from 'current-context'")
 	authConfig = flag.String("auth_config", "", "Path to the auth info file.")
 	certDir    = flag.String("cert_dir", "", "Path to the directory containing the certs. Default is empty, which doesn't use certs.")
+
+	// TODO: One flag per provider, or change this to cloud_project and cloud_zone?
 	gceProject = flag.String("gce_project", "", "The GCE project being used, if applicable")
 	gceZone    = flag.String("gce_zone", "", "GCE zone being used, if applicable")
 	host       = flag.String("host", "", "The host to connect to")
@@ -58,10 +63,23 @@ func main() {
 		glog.Error("Invalid --times (negative or no testing requested)!")
 		os.Exit(1)
 	}
-	gceConfig := &e2e.GCEConfig{
+	cloudConfig := &e2e.CloudConfig{
 		ProjectID:  *gceProject,
 		Zone:       *gceZone,
 		MasterName: *masterName,
 	}
-	e2e.RunE2ETests(*kubeConfig, *authConfig, *certDir, *host, *repoRoot, *provider, gceConfig, *orderseed, *times, *reportDir, testList)
+
+	if *provider == "aws" {
+		awsConfig := "[Global]\n"
+		awsConfig += fmt.Sprintf("Region=%s\n", *gceZone)
+
+		var err error
+		cloudConfig.Provider, err = cloudprovider.GetCloudProvider(*provider, strings.NewReader(awsConfig))
+		if err != nil {
+			glog.Error("Error building AWS provider: %v", err)
+			os.Exit(1)
+		}
+	}
+
+	e2e.RunE2ETests(*kubeConfig, *authConfig, *certDir, *host, *repoRoot, *provider, cloudConfig, *orderseed, *times, *reportDir, testList)
 }

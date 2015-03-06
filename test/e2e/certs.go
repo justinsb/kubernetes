@@ -38,8 +38,8 @@ var _ = Describe("MasterCerts", func() {
 		}
 
 		for _, certFile := range []string{"kubecfg.key", "kubecfg.crt", "ca.crt"} {
-			cmd := exec.Command("gcloud", "compute", "ssh", "--project", testContext.gceConfig.ProjectID,
-				"--zone", testContext.gceConfig.Zone, testContext.gceConfig.MasterName,
+			cmd := exec.Command("gcloud", "compute", "ssh", "--project", testContext.cloudConfig.ProjectID,
+				"--zone", testContext.cloudConfig.Zone, testContext.cloudConfig.MasterName,
 				"--command", fmt.Sprintf("ls /srv/kubernetes/%s", certFile))
 			if _, err := cmd.CombinedOutput(); err != nil {
 				Fail(fmt.Sprintf("Error checking for cert file %s on master: %v", certFile, err))
