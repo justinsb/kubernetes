@@ -368,11 +368,15 @@ function kube-up {
     local output
     output=$(ssh -oStrictHostKeyChecking=no -i ${AWS_SSH_KEY} ubuntu@${KUBE_MASTER_IP} pgrep salt-master 2> $LOG) || output=""
     if [[ -z "${output}" ]]; then
-      if (( attempt > 30 )); then
+      if (( attempt > 60 )); then
         echo
         echo -e "${color_red}salt-master failed to start on ${KUBE_MASTER_IP}. Your cluster is unlikely" >&2
         echo "to work correctly. Please run ./cluster/kube-down.sh and re-create the" >&2
         echo -e "cluster. (sorry!)${color_norm}" >&2
+
+        # Show processes; timeouts often happen because the saltstack apt-get installation is slow
+        ssh -oStrictHostKeyChecking=no -i ${AWS_SSH_KEY} ubuntu@${KUBE_MASTER_IP} ps -ef
+
         exit 1
       fi
     else
