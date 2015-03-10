@@ -104,7 +104,6 @@ func (self *FakeEC2) GetMetaData(key string) ([]byte, error) {
 	}
 }
 
-
 func (ec2 *FakeEC2) DescribeLoadBalancers(region string, name string) ([]elb.LoadBalancer, error) {
 	panic("Not implemented")
 }
