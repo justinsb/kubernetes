@@ -212,8 +212,8 @@ func TestGetResources(t *testing.T) {
 	}
 	e1 := &api.NodeResources{
 		Capacity: api.ResourceList{
-			api.ResourceCPU:    *resource.NewMilliQuantity(int64(3.0 * 1000), resource.DecimalSI),
-			api.ResourceMemory: *resource.NewQuantity(int64(3.75 * 1024 * 1024 * 1024), resource.BinarySI),
+			api.ResourceCPU:    *resource.NewMilliQuantity(int64(3.0*1000), resource.DecimalSI),
+			api.ResourceMemory: *resource.NewQuantity(int64(3.75*1024*1024*1024), resource.BinarySI),
 		},
 	}
 	if !reflect.DeepEqual(e1, res1) {
@@ -226,8 +226,8 @@ func TestGetResources(t *testing.T) {
 	}
 	e2 := &api.NodeResources{
 		Capacity: api.ResourceList{
-			api.ResourceCPU:    *resource.NewMilliQuantity(int64(104.0 * 1000), resource.DecimalSI),
-			api.ResourceMemory: *resource.NewQuantity(int64(244.0 * 1024 * 1024 * 1024), resource.BinarySI),
+			api.ResourceCPU:    *resource.NewMilliQuantity(int64(104.0*1000), resource.DecimalSI),
+			api.ResourceMemory: *resource.NewQuantity(int64(244.0*1024*1024*1024), resource.BinarySI),
 		},
 	}
 	if !reflect.DeepEqual(e2, res2) {
