@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/GoogleCloudPlatform/kubernetes",
-	"GoVersion": "go1.4",
+	"GoVersion": "go1.4.1",
 	"Packages": [
 		"./..."
 	],
@@ -151,17 +151,17 @@
 		},
 		{
 			"ImportPath": "github.com/google/cadvisor/client",
-			"Comment": "0.6.2",
-			"Rev": "89088df70eca64cf9d6b9a23a3d2bc21a30916d6"
+			"Comment": "0.10.1-30-gb5e2f37",
+			"Rev": "b5e2f3788e4a39a0836c5490e6bf31832400c1f3"
 		},
 		{
-			"ImportPath": "github.com/google/cadvisor/info",
-			"Comment": "0.6.2",
-			"Rev": "89088df70eca64cf9d6b9a23a3d2bc21a30916d6"
+			"ImportPath": "github.com/google/cadvisor/info/v1",
+			"Comment": "0.10.1-30-gb5e2f37",
+			"Rev": "b5e2f3788e4a39a0836c5490e6bf31832400c1f3"
 		},
 		{
 			"ImportPath": "github.com/google/gofuzz",
-			"Rev": "aef70dacbc78771e35beb261bb3a72986adf7906"
+			"Rev": "bbcb9da2d746f8bdbd6a936686a0a6067ada0ec5"
 		},
 		{
 			"ImportPath": "github.com/imdario/mergo",
@@ -187,6 +187,10 @@
 		},
 		{
 			"ImportPath": "github.com/mitchellh/goamz/ec2",
+			"Rev": "703cfb45985762869e465f37ed030ff01615ff1e"
+		},
+		{
+			"ImportPath": "github.com/mitchellh/goamz/elb",
 			"Rev": "703cfb45985762869e465f37ed030ff01615ff1e"
 		},
 		{
@@ -228,11 +232,6 @@
 			"Rev": "6c34ef819e19b4e16f410100ace4aa006f0e3bf8"
 		},
 		{
-			"ImportPath": "github.com/racker/perigee",
-			"Comment": "v0.0.0-18-g0c00cb0",
-			"Rev": "0c00cb0a026b71034ebc8205263c77dad3577db5"
-		},
-		{
 			"ImportPath": "github.com/rackspace/gophercloud",
 			"Comment": "v1.0.0-490-g32d0a89",
 			"Rev": "32d0a893a8ef70abe76dc5153e2925b39cbea7f7"
@@ -269,6 +268,10 @@
 		},
 		{
 			"ImportPath": "github.com/stretchr/testify/mock",
+			"Rev": "e4ec8152c15fc46bd5056ce65997a07c7d415325"
+		},
+		{
+			"ImportPath": "github.com/stretchr/testify/require",
 			"Rev": "e4ec8152c15fc46bd5056ce65997a07c7d415325"
 		},
 		{

@@ -46,6 +46,8 @@ import (
 //         DNS_LABEL(\.DNS_LABEL)*
 
 // Volume represents a named volume in a pod that may be accessed by any containers in the pod.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/volumes.md
 type Volume struct {
 	// Required: This must be a DNS_LABEL.  Each volume in a pod must have
 	// a unique name.
@@ -58,6 +60,8 @@ type Volume struct {
 
 // VolumeSource represents the source location of a valume to mount.
 // Only one of its members may be specified.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/volumes.md#types-of-volumes
 type VolumeSource struct {
 	// HostDir represents a pre-existing directory on the host machine that is directly
 	// exposed to the container. This is generally used for system agents or other privileged
@@ -77,13 +81,20 @@ type VolumeSource struct {
 }
 
 // HostPathVolumeSource represents bare host directory volume.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/volumes.md#hostdir
 type HostPathVolumeSource struct {
 	Path string `json:"path" description:"path of the directory on the host"`
 }
 
+// Represents an empty directory volume.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/volumes.md#emptydir
 type EmptyDirVolumeSource struct{}
 
 // SecretVolumeSource adapts a Secret into a VolumeSource
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/design/secrets.md
 type SecretVolumeSource struct {
 	// Reference to a Secret
 	Target ObjectReference `json:"target" description:"target is a reference to a secret"`
@@ -119,6 +130,8 @@ type ContainerPort struct {
 // A GCE PD must exist and be formatted before mounting to a container.
 // The disk must also be in the same GCE project and zone as the kubelet.
 // A GCE PD can only be mounted as read/write once.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/volumes.md#gcepersistentdisk
 type GCEPersistentDiskVolumeSource struct {
 	// Unique name of the PD resource. Used to identify the disk in GCE
 	PDName string `json:"pdName" description:"unique name of the PD resource in GCE"`
@@ -146,6 +159,8 @@ type GitRepoVolumeSource struct {
 }
 
 // VolumeMount describes a mounting of a Volume within a container.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/volumes.md
 type VolumeMount struct {
 	// Required: This must match the Name of a Volume [above].
 	Name string `json:"name" description:"name of the volume to mount"`
@@ -164,6 +179,8 @@ type EnvVar struct {
 }
 
 // HTTPGetAction describes an action based on HTTP Get requests.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/container-environment.md#hook-handler-implementations
 type HTTPGetAction struct {
 	// Optional: Path to access on the HTTP server.
 	Path string `json:"path,omitempty" description:"path to access on the HTTP server"`
@@ -174,12 +191,16 @@ type HTTPGetAction struct {
 }
 
 // TCPSocketAction describes an action based on opening a socket
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/container-environment.md#hook-handler-implementations
 type TCPSocketAction struct {
 	// Required: Port to connect to.
 	Port util.IntOrString `json:"port,omitempty" description:"number of name of the port to access on the container"`
 }
 
 // ExecAction describes a "run in container" action.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/container-environment.md#hook-handler-implementations
 type ExecAction struct {
 	// Command is the command line to execute inside the container, the working directory for the
 	// command  is root ('/') in the container's filesystem.  The command is simply exec'd, it is
@@ -204,6 +225,8 @@ type LivenessProbe struct {
 }
 
 // PullPolicy describes a policy for if/when to pull a container image
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/images.md#preloading-images
 type PullPolicy string
 
 const (
@@ -219,6 +242,8 @@ const (
 type CapabilityType string
 
 // Capabilities represent POSIX capabilities that can be added or removed to a running container.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/containers.md#capabilities
 type Capabilities struct {
 	// Added capabilities
 	Add []CapabilityType `json:"add,omitempty" description:"added capabilities"`
@@ -232,35 +257,37 @@ type ResourceRequirements struct {
 }
 
 // Container represents a single container that is expected to be run on the host.
+//
+//
 type Container struct {
 	// Required: This must be a DNS_LABEL.  Each container in a pod must
 	// have a unique name.
-	Name string `json:"name" description:"name of the container; must be a DNS_LABEL and unique within the pod"`
+	Name string `json:"name" description:"name of the container; must be a DNS_LABEL and unique within the pod; cannot be updated"`
 	// Required.
 	Image string `json:"image" description:"Docker image name"`
 	// Optional: Defaults to whatever is defined in the image.
-	Command []string `json:"command,omitempty" description:"command argv array; not executed within a shell; defaults to entrypoint or command in the image"`
+	Command []string `json:"command,omitempty" description:"command argv array; not executed within a shell; defaults to entrypoint or command in the image; cannot be updated"`
 	// Optional: Defaults to Docker's default.
-	WorkingDir string               `json:"workingDir,omitempty" description:"container's working directory; defaults to image's default"`
-	Ports      []ContainerPort      `json:"ports,omitempty" description:"list of ports to expose from the container"`
-	Env        []EnvVar             `json:"env,omitempty" description:"list of environment variables to set in the container"`
-	Resources  ResourceRequirements `json:"resources,omitempty" description:"Compute Resources required by this container"`
+	WorkingDir string               `json:"workingDir,omitempty" description:"container's working directory; defaults to image's default; cannot be updated"`
+	Ports      []ContainerPort      `json:"ports,omitempty" description:"list of ports to expose from the container; cannot be updated"`
+	Env        []EnvVar             `json:"env,omitempty" description:"list of environment variables to set in the container; cannot be updated"`
+	Resources  ResourceRequirements `json:"resources,omitempty" description:"Compute Resources required by this container; cannot be updated"`
 	// Optional: Defaults to unlimited.
-	CPU int `json:"cpu,omitempty" description:"CPU share in thousandths of a core"`
+	CPU int `json:"cpu,omitempty" description:"CPU share in thousandths of a core; cannot be updated"`
 	// Optional: Defaults to unlimited.
-	Memory         int64          `json:"memory,omitempty" description:"memory limit in bytes; defaults to unlimited"`
-	VolumeMounts   []VolumeMount  `json:"volumeMounts,omitempty" description:"pod volumes to mount into the container's filesystem"`
-	LivenessProbe  *LivenessProbe `json:"livenessProbe,omitempty" description:"periodic probe of container liveness; container will be restarted if the probe fails"`
-	ReadinessProbe *LivenessProbe `json:"readinessProbe,omitempty" description:"periodic probe of container service readiness; container will be removed from service endpoints if the probe fails"`
-	Lifecycle      *Lifecycle     `json:"lifecycle,omitempty" description:"actions that the management system should take in response to container lifecycle events"`
+	Memory         int64          `json:"memory,omitempty" description:"memory limit in bytes; defaults to unlimited; cannot be updated"`
+	VolumeMounts   []VolumeMount  `json:"volumeMounts,omitempty" description:"pod volumes to mount into the container's filesystem; cannot be updated"`
+	LivenessProbe  *LivenessProbe `json:"livenessProbe,omitempty" description:"periodic probe of container liveness; container will be restarted if the probe fails; cannot be updated"`
+	ReadinessProbe *LivenessProbe `json:"readinessProbe,omitempty" description:"periodic probe of container service readiness; container will be removed from service endpoints if the probe fails; cannot be updated"`
+	Lifecycle      *Lifecycle     `json:"lifecycle,omitempty" description:"actions that the management system should take in response to container lifecycle events; cannot be updated"`
 	// Optional: Defaults to /dev/termination-log
-	TerminationMessagePath string `json:"terminationMessagePath,omitempty" description:"path at which the file to which the container's termination message will be written is mounted into the container's filesystem; message written is intended to be brief final status, such as an assertion failure message; defaults to /dev/termination-log"`
+	TerminationMessagePath string `json:"terminationMessagePath,omitempty" description:"path at which the file to which the container's termination message will be written is mounted into the container's filesystem; message written is intended to be brief final status, such as an assertion failure message; defaults to /dev/termination-log; cannot be updated"`
 	// Optional: Default to false.
-	Privileged bool `json:"privileged,omitempty" description:"whether or not the container is granted privileged status; defaults to false"`
+	Privileged bool `json:"privileged,omitempty" description:"whether or not the container is granted privileged status; defaults to false; cannot be updated"`
 	// Optional: Policy for pulling images for this container
-	ImagePullPolicy PullPolicy `json:"imagePullPolicy" description:"image pull policy; one of PullAlways, PullNever, PullIfNotPresent; defaults to PullAlways if :latest tag is specified, or PullIfNotPresent otherwise"`
+	ImagePullPolicy PullPolicy `json:"imagePullPolicy" description:"image pull policy; one of PullAlways, PullNever, PullIfNotPresent; defaults to PullAlways if :latest tag is specified, or PullIfNotPresent otherwise; cannot be updated"`
 	// Optional: Capabilities for container.
-	Capabilities Capabilities `json:"capabilities,omitempty" description:"capabilities for container"`
+	Capabilities Capabilities `json:"capabilities,omitempty" description:"capabilities for container; cannot be updated"`
 }
 
 const (
@@ -270,6 +297,8 @@ const (
 
 // Handler defines a specific action that should be taken
 // TODO: pass structured data to these actions, and document that data here.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/container-environment.md#hook-handler-implementations
 type Handler struct {
 	// One and only one of the following should be specified.
 	// Exec specifies the action to take.
@@ -284,6 +313,8 @@ type Handler struct {
 // Lifecycle describes actions that the management system should take in response to container lifecycle
 // events.  For the PostStart and PreStop lifecycle handlers, management of the container blocks
 // until the action is complete, unless the container process fails, in which case the handler is aborted.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/container-environment.md#hook-details
 type Lifecycle struct {
 	// PostStart is called immediately after a container is created.  If the handler fails, the container
 	// is terminated and restarted.
@@ -297,14 +328,14 @@ type Lifecycle struct {
 
 // TypeMeta is shared by all objects sent to, or returned from the client.
 type TypeMeta struct {
-	Kind              string    `json:"kind,omitempty" description:"kind of object, in CamelCase"`
-	ID                string    `json:"id,omitempty" description:"name of the object; must be a DNS_SUBDOMAIN and unique among all objects of the same kind within the same namespace; used in resource URLs"`
+	Kind              string    `json:"kind,omitempty" description:"kind of object, in CamelCase; cannot be updated"`
+	ID                string    `json:"id,omitempty" description:"name of the object; must be a DNS_SUBDOMAIN and unique among all objects of the same kind within the same namespace; used in resource URLs; cannot be updated"`
 	UID               types.UID `json:"uid,omitempty" description:"unique UUID across space and time; populated by the system, read-only"`
 	CreationTimestamp util.Time `json:"creationTimestamp,omitempty" description:"RFC 3339 date and time at which the object was created; populated by the system, read-only; null for lists"`
 	SelfLink          string    `json:"selfLink,omitempty" description:"URL for the object; populated by the system, read-only"`
-	ResourceVersion   uint64    `json:"resourceVersion,omitempty" description:"string that identifies the internal version of this object that can be used by clients to determine when objects have changed; populated by the system, read-only; value must be treated as opaque by clients and passed unmodified back to the server"`
+	ResourceVersion   uint64    `json:"resourceVersion,omitempty" description:"string that identifies the internal version of this object that can be used by clients to determine when objects have changed; populated by the system, read-only; value must be treated as opaque by clients and passed unmodified back to the server: https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/api-conventions.md#concurrency-control-and-consistency"`
 	APIVersion        string    `json:"apiVersion,omitempty" description:"version of the schema the object should have"`
-	Namespace         string    `json:"namespace,omitempty" description:"namespace to which the object belongs; must be a DNS_SUBDOMAIN; 'default' by default"`
+	Namespace         string    `json:"namespace,omitempty" description:"namespace to which the object belongs; must be a DNS_SUBDOMAIN; 'default' by default; cannot be updated"`
 
 	// GenerateName indicates that the name should be made unique by the server prior to persisting
 	// it. A non-empty value for the field indicates the name will be made unique (and the name
@@ -338,6 +369,8 @@ const (
 )
 
 // PodStatus represents a status of a pod.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/pod-states.md
 type PodStatus string
 
 // These are the valid statuses of pods.
@@ -449,7 +482,7 @@ type PodState struct {
 	Conditions []PodCondition    `json:"Condition,omitempty" description:"current service state of pod"`
 	// A human readable message indicating details about why the pod is in this state.
 	Message string `json:"message,omitempty" description:"human readable message indicating details about why the pod is in this condition"`
-	Host    string `json:"host,omitempty" description:"host to which the pod is assigned; empty if not yet scheduled"`
+	Host    string `json:"host,omitempty" description:"host to which the pod is assigned; empty if not yet scheduled; cannot be updated"`
 	HostIP  string `json:"hostIP,omitempty" description:"IP address of the host to which the pod is assigned; empty if not yet scheduled"`
 	PodIP   string `json:"podIP,omitempty" description:"IP address allocated to the pod; routable at least within the cluster; empty if not yet allocated"`
 
@@ -471,6 +504,8 @@ type PodList struct {
 }
 
 // Pod is a collection of containers, used as either input (create, update) or as output (list, get).
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/pods.md
 type Pod struct {
 	TypeMeta     `json:",inline"`
 	Labels       map[string]string `json:"labels,omitempty" description:"map of string keys and values that can be used to organize and categorize pods; may match selectors of replication controllers and services"`
@@ -494,6 +529,8 @@ type ReplicationControllerList struct {
 }
 
 // ReplicationController represents the configuration of a replication controller.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/replication-controller.md
 type ReplicationController struct {
 	TypeMeta     `json:",inline"`
 	DesiredState ReplicationControllerState `json:"desiredState,omitempty" description:"specification of the desired state of the replication controller"`
@@ -502,6 +539,8 @@ type ReplicationController struct {
 }
 
 // PodTemplate holds the information used for creating pods.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/replication-controller.md#pod-template
 type PodTemplate struct {
 	DesiredState PodState          `json:"desiredState,omitempty" description:"specification of the desired state of pods created from this template"`
 	NodeSelector map[string]string `json:"nodeSelector,omitempty" description:"a selector which must be true for the pod to fit on a node"`
@@ -529,6 +568,8 @@ type ServiceList struct {
 // Service is a named abstraction of software service (for example, mysql) consisting of local port
 // (for example 3306) that the proxy listens on, and the selector that determines which pods
 // will answer requests sent through the proxy.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/services.md
 type Service struct {
 	TypeMeta `json:",inline"`
 
@@ -583,6 +624,8 @@ type EndpointsList struct {
 }
 
 // NodeStatus is information about the current status of a node.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/node.md#node-status
 type NodeStatus struct {
 	// NodePhase is the current lifecycle phase of the node.
 	Phase NodePhase `json:"phase,omitempty" description:"node phase is the current lifecycle phase of the node"`
@@ -592,6 +635,9 @@ type NodeStatus struct {
 	Addresses []NodeAddress `json:"addresses,omitempty" description:"list of addresses reachable to the node"`
 }
 
+// Described the current lifecycle phase of a node.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/node.md#node-phase
 type NodePhase string
 
 // These are the valid phases of node.
@@ -604,6 +650,9 @@ const (
 	NodeTerminated NodePhase = "Terminated"
 )
 
+// Describes the condition of a running node.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/node.md#node-condition
 type NodeConditionKind string
 
 // These are valid conditions of node. Currently, we don't have enough information to decide
@@ -616,6 +665,9 @@ const (
 	NodeReady NodeConditionKind = "Ready"
 )
 
+// Described the conditions of a running node.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/node.md#node-condition
 type NodeCondition struct {
 	Kind               NodeConditionKind `json:"kind" description:"kind of the condition, one of Reachable, Ready"`
 	Status             ConditionStatus   `json:"status" description:"status of the condition, one of Full, None, Unknown"`
@@ -640,7 +692,8 @@ type NodeAddress struct {
 }
 
 // NodeResources represents resources on a Kubernetes system node
-// see https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/resources.md for more details.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/resources.md
 type NodeResources struct {
 	// Capacity represents the available resources.
 	Capacity ResourceList `json:"capacity,omitempty" description:"resource capacity of a node represented as a map of resource name to quantity of resource"`
@@ -659,6 +712,8 @@ type ResourceList map[ResourceName]util.IntOrString
 
 // Minion is a worker node in Kubernetenes.
 // The name of the minion according to etcd is in ID.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/node.md#node-condition
 type Minion struct {
 	TypeMeta `json:",inline"`
 	// DEPRECATED: Use Status.Addresses instead.
@@ -691,7 +746,9 @@ type NamespaceStatus struct {
 }
 
 // A namespace provides a scope for Names.
-// Use of multiple namespaces is optional
+// Use of multiple namespaces is optional.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/namespaces.md
 type Namespace struct {
 	TypeMeta `json:",inline"`
 
@@ -702,7 +759,7 @@ type Namespace struct {
 	Spec NamespaceSpec `json:"spec,omitempty" description:"spec defines the behavior of the Namespace"`
 
 	// Status describes the current status of a Namespace
-	Status NamespaceStatus `json:"status,omitempty" description:"status describes the current status of a Namespace"`
+	Status NamespaceStatus `json:"status,omitempty" description:"status describes the current status of a Namespace; read-only"`
 }
 
 // NamespaceList is a list of Namespaces.
@@ -879,7 +936,7 @@ type ObjectReference struct {
 	ID              string    `json:"name,omitempty" description:"id of the referent"`
 	UID             types.UID `json:"uid,omitempty" description:"uid of the referent"`
 	APIVersion      string    `json:"apiVersion,omitempty" description:"API version of the referent"`
-	ResourceVersion string    `json:"resourceVersion,omitempty" description:"specific resourceVersion to which this reference is made, if any"`
+	ResourceVersion string    `json:"resourceVersion,omitempty" description:"specific resourceVersion to which this reference is made, if any: https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/api-conventions.md#concurrency-control-and-consistency"`
 
 	// Optional. If referring to a piece of an object instead of an entire object, this string
 	// should contain information to identify the sub-object. For example, if the object
@@ -894,6 +951,8 @@ type ObjectReference struct {
 
 // Event is a report of an event somewhere in the cluster.
 // TODO: Decide whether to store these separately or with the object they apply to.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/pod-states.md#events
 type Event struct {
 	TypeMeta `json:",inline"`
 
@@ -957,13 +1016,13 @@ type ContainerManifest struct {
 	Version string `json:"version" description:"manifest version; must be v1beta1"`
 	// Required: This must be a DNS_SUBDOMAIN.
 	// TODO: ID on Manifest is deprecated and will be removed in the future.
-	ID string `json:"id" description:"manifest name; must be a DNS_SUBDOMAIN"`
+	ID string `json:"id" description:"manifest name; must be a DNS_SUBDOMAIN; cannot be updated"`
 	// TODO: UUID on Manifext is deprecated in the future once we are done
 	// with the API refactory. It is required for now to determine the instance
 	// of a Pod.
-	UUID          types.UID     `json:"uuid,omitempty" description:"manifest UUID"`
+	UUID          types.UID     `json:"uuid,omitempty" description:"manifest UUID; cannot be updated"`
 	Volumes       []Volume      `json:"volumes" description:"list of volumes that can be mounted by containers belonging to the pod"`
-	Containers    []Container   `json:"containers" description:"list of containers belonging to the pod"`
+	Containers    []Container   `json:"containers" description:"list of containers belonging to the pod; cannot be updated; containers cannot currently be added or removed"`
 	RestartPolicy RestartPolicy `json:"restartPolicy,omitempty" description:"restart policy for all containers within the pod; one of RestartPolicyAlways, RestartPolicyOnFailure, RestartPolicyNever"`
 	// Optional: Set DNS policy.  Defaults to "ClusterFirst"
 	DNSPolicy DNSPolicy `json:"dnsPolicy,omitempty" description:"DNS policy for containers within the pod; one of 'ClusterFirst' or 'Default'"`
@@ -995,7 +1054,7 @@ const (
 // PodSpec is a description of a pod
 type PodSpec struct {
 	Volumes       []Volume      `json:"volumes" description:"list of volumes that can be mounted by containers belonging to the pod"`
-	Containers    []Container   `json:"containers" description:"list of containers belonging to the pod"`
+	Containers    []Container   `json:"containers" description:"list of containers belonging to the pod; containers cannot currently be added or removed"`
 	RestartPolicy RestartPolicy `json:"restartPolicy,omitempty" description:"restart policy for all containers within the pod; one of RestartPolicyAlways, RestartPolicyOnFailure, RestartPolicyNever"`
 	// Optional: Set DNS policy.  Defaults to "ClusterFirst"
 	DNSPolicy DNSPolicy `json:"dnsPolicy,omitempty" description:"DNS policy for containers within the pod; one of 'ClusterFirst' or 'Default'"`
@@ -1134,6 +1193,8 @@ type ResourceQuotaList struct {
 
 // Secret holds secret data of a certain type.  The total bytes of the values in
 // the Data field must be less than MaxSecretSize bytes.
+//
+// https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/design/secrets.md
 type Secret struct {
 	TypeMeta `json:",inline"`
 

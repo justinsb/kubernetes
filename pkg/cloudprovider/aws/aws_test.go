@@ -79,28 +79,47 @@ func TestNewAWSCloud(t *testing.T) {
 }
 
 type FakeEC2 struct {
-	instances func(instanceIds []string, filter *ec2InstanceFilter) (resp *ec2.InstancesResp, err error)
+	instances        []ec2.Instance
+	availabilityZone string
 }
 
-func (ec2 *FakeEC2) Instances(instanceIds []string, filter *ec2InstanceFilter) (resp *ec2.InstancesResp, err error) {
-	return ec2.instances(instanceIds, filter)
+func (self *FakeEC2) Instances(instanceIds []string, filter *ec2InstanceFilter) (resp *ec2.InstancesResp, err error) {
+	matches := []ec2.Instance{}
+	for _, instance := range self.instances {
+		if filter == nil || filter.Matches(instance) {
+			matches = append(matches, instance)
+		}
+	}
+	return &ec2.InstancesResp{"",
+		[]ec2.Reservation{
+			{"", "", "", nil, matches}}}, nil
+}
+
+func (self *FakeEC2) GetMetaData(key string) ([]byte, error) {
+	if key == "placement/availability-zone" {
+		return []byte(self.availabilityZone), nil
+	} else {
+		return nil, nil
+	}
 }
 
 func mockInstancesResp(instances []ec2.Instance) (aws *AWSCloud) {
+	availabilityZone := "us-west-2d"
 	return &AWSCloud{
-		&FakeEC2{
-			func(instanceIds []string, filter *ec2InstanceFilter) (resp *ec2.InstancesResp, err error) {
-				matches := []ec2.Instance{}
-				for _, instance := range instances {
-					if filter == nil || filter.Matches(instance) {
-						matches = append(matches, instance)
-					}
-				}
-				return &ec2.InstancesResp{"",
-					[]ec2.Reservation{
-						{"", "", "", nil, matches}}}, nil
-			}},
-		nil}
+		ec2: &FakeEC2{
+			instances:        instances,
+			availabilityZone: availabilityZone,
+		},
+	}
+}
+
+func mockAvailabilityZone(region string, availabilityZone string) *AWSCloud {
+	return &AWSCloud{
+		ec2: &FakeEC2{
+			availabilityZone: availabilityZone,
+		},
+		region: aws.Regions[region],
+	}
 }
 
 func TestList(t *testing.T) {
@@ -193,8 +212,8 @@ func TestGetResources(t *testing.T) {
 	}
 	e1 := &api.NodeResources{
 		Capacity: api.ResourceList{
-			api.ResourceCPU:    *resource.NewMilliQuantity(int64(3.0*1000), resource.DecimalSI),
-			api.ResourceMemory: *resource.NewQuantity(int64(3.75*1024*1024*1024), resource.BinarySI),
+			api.ResourceCPU:    *resource.NewMilliQuantity(int64(3.0 * 1000), resource.DecimalSI),
+			api.ResourceMemory: *resource.NewQuantity(int64(3.75 * 1024 * 1024 * 1024), resource.BinarySI),
 		},
 	}
 	if !reflect.DeepEqual(e1, res1) {
@@ -207,8 +226,8 @@ func TestGetResources(t *testing.T) {
 	}
 	e2 := &api.NodeResources{
 		Capacity: api.ResourceList{
-			api.ResourceCPU:    *resource.NewMilliQuantity(int64(104.0*1000), resource.DecimalSI),
-			api.ResourceMemory: *resource.NewQuantity(int64(244.0*1024*1024*1024), resource.BinarySI),
+			api.ResourceCPU:    *resource.NewMilliQuantity(int64(104.0 * 1000), resource.DecimalSI),
+			api.ResourceMemory: *resource.NewQuantity(int64(244.0 * 1024 * 1024 * 1024), resource.BinarySI),
 		},
 	}
 	if !reflect.DeepEqual(e2, res2) {
@@ -221,5 +240,23 @@ func TestGetResources(t *testing.T) {
 	}
 	if res3 != nil {
 		t.Errorf("Should return nil resources when unknown instance type")
+	}
+}
+
+func TestGetRegion(t *testing.T) {
+	aws := mockAvailabilityZone("us-west-2", "us-west-2e")
+	zones, ok := aws.Zones()
+	if !ok {
+		t.Fatalf("Unexpected missing zones impl")
+	}
+	zone, err := zones.GetZone()
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+	if zone.Region != "us-west-2" {
+		t.Errorf("Unexpected region: %s", zone.Region)
+	}
+	if zone.FailureDomain != "us-west-2e" {
+		t.Errorf("Unexpected FailureDomain: %s", zone.FailureDomain)
 	}
 }

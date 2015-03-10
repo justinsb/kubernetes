@@ -20,10 +20,12 @@ import (
 	"fmt"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
 	etcderr "github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors/etcd"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/rest"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/constraint"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/registry/generic"
 	etcdgeneric "github.com/GoogleCloudPlatform/kubernetes/pkg/registry/generic/etcd"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/registry/pod"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
@@ -52,6 +54,9 @@ func NewREST(h tools.EtcdHelper, factory pod.BoundPodFactory) (*REST, *BindingRE
 		},
 		ObjectNameFunc: func(obj runtime.Object) (string, error) {
 			return obj.(*api.Pod).Name, nil
+		},
+		PredicateFunc: func(label, field labels.Selector) generic.Matcher {
+			return pod.MatchPod(label, field)
 		},
 		EndpointName: "pods",
 
@@ -92,12 +97,12 @@ func (r *REST) NewList() runtime.Object {
 
 // List obtains a list of pods with labels that match selector.
 func (r *REST) List(ctx api.Context, label, field labels.Selector) (runtime.Object, error) {
-	return r.store.List(ctx, pod.MatchPod(label, field))
+	return r.store.List(ctx, label, field)
 }
 
 // Watch begins watching for new, changed, or deleted pods.
 func (r *REST) Watch(ctx api.Context, label, field labels.Selector, resourceVersion string) (watch.Interface, error) {
-	return r.store.Watch(ctx, pod.MatchPod(label, field), resourceVersion)
+	return r.store.Watch(ctx, label, field, resourceVersion)
 }
 
 // Get gets a specific pod specified by its ID.
@@ -142,7 +147,14 @@ func (r *BindingREST) New() runtime.Object {
 // Create ensures a pod is bound to a specific host.
 func (r *BindingREST) Create(ctx api.Context, obj runtime.Object) (out runtime.Object, err error) {
 	binding := obj.(*api.Binding)
-	err = r.assignPod(ctx, binding.PodID, binding.Host)
+	// TODO: move me to a binding strategy
+	if len(binding.Target.Kind) != 0 && (binding.Target.Kind != "Node" && binding.Target.Kind != "Minion") {
+		return nil, errors.NewInvalid("binding", binding.Name, errors.ValidationErrorList{errors.NewFieldInvalid("to.kind", binding.Target.Kind, "must be empty, 'Node', or 'Minion'")})
+	}
+	if len(binding.Target.Name) == 0 {
+		return nil, errors.NewInvalid("binding", binding.Name, errors.ValidationErrorList{errors.NewFieldRequired("to.name", binding.Target.Name)})
+	}
+	err = r.assignPod(ctx, binding.Name, binding.Target.Name)
 	err = etcderr.InterpretCreateError(err, "binding", "")
 	out = &api.Status{Status: api.StatusSuccess}
 	return

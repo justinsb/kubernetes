@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
@@ -30,6 +31,7 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/credentialprovider"
 	_ "github.com/GoogleCloudPlatform/kubernetes/pkg/healthz"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/kubelet"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/kubelet/cadvisor"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/kubelet/config"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/kubelet/dockertools"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/kubelet/volume"
@@ -38,6 +40,7 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 
 	"github.com/golang/glog"
+	cadvisorClient "github.com/google/cadvisor/client"
 	"github.com/spf13/pflag"
 )
 
@@ -255,7 +258,8 @@ func SimpleRunKubelet(client *client.Client,
 	hostname, rootDir, manifestURL, address string,
 	port uint,
 	masterServiceNamespace string,
-	volumePlugins []volume.Plugin) {
+	volumePlugins []volume.Plugin,
+	tlsOptions *kubelet.TLSOptions) {
 	kcfg := KubeletConfig{
 		KubeClient:             client,
 		EtcdClient:             etcdClient,
@@ -273,6 +277,7 @@ func SimpleRunKubelet(client *client.Client,
 		MaxContainerCount:       5,
 		MasterServiceNamespace:  masterServiceNamespace,
 		VolumePlugins:           volumePlugins,
+		TLSOptions:              tlsOptions,
 	}
 	RunKubelet(&kcfg)
 }
@@ -318,7 +323,7 @@ func startKubelet(k *kubelet.Kubelet, podCfg *config.PodConfig, kc *KubeletConfi
 	// start the kubelet server
 	if kc.EnableServer {
 		go util.Forever(func() {
-			kubelet.ListenAndServeKubeletServer(k, net.IP(kc.Address), kc.Port, kc.EnableDebuggingHandlers)
+			kubelet.ListenAndServeKubeletServer(k, net.IP(kc.Address), kc.Port, kc.TLSOptions, kc.EnableDebuggingHandlers)
 		}, 0)
 	}
 }
@@ -381,17 +386,36 @@ type KubeletConfig struct {
 	VolumePlugins                  []volume.Plugin
 	StreamingConnectionIdleTimeout time.Duration
 	Recorder                       record.EventRecorder
+	TLSOptions                     *kubelet.TLSOptions
 }
 
 func createAndInitKubelet(kc *KubeletConfig, pc *config.PodConfig) (*kubelet.Kubelet, error) {
 	// TODO: block until all sources have delivered at least one update to the channel, or break the sync loop
 	// up into "per source" synchronizations
+	// TODO: KubeletConfig.KubeClient should be a client interface, but client interface misses certain methods
+	// used by kubelet. Since NewMainKubelet expects a client interface, we need to make sure we are not passing
+	// a nil pointer to it when what we really want is a nil interface.
+	var kubeClient client.Interface
+	if kc.KubeClient == nil {
+		kubeClient = nil
+	} else {
+		kubeClient = kc.KubeClient
+	}
+
+	cc, err := cadvisorClient.NewClient("http://127.0.0.1:" + strconv.Itoa(int(kc.CAdvisorPort)))
+	if err != nil {
+		return nil, err
+	}
+	cadvisorInterface, err := cadvisor.New(cc)
+	if err != nil {
+		return nil, err
+	}
 
 	k, err := kubelet.NewMainKubelet(
 		kc.Hostname,
 		kc.DockerClient,
 		kc.EtcdClient,
-		kc.KubeClient,
+		kubeClient,
 		kc.RootDirectory,
 		kc.PodInfraContainerImage,
 		kc.SyncFrequency,
@@ -399,13 +423,14 @@ func createAndInitKubelet(kc *KubeletConfig, pc *config.PodConfig) (*kubelet.Kub
 		kc.RegistryBurst,
 		kc.MinimumGCAge,
 		kc.MaxContainerCount,
-		pc.IsSourceSeen,
+		pc.SeenAllSources,
 		kc.ClusterDomain,
 		net.IP(kc.ClusterDNS),
 		kc.MasterServiceNamespace,
 		kc.VolumePlugins,
 		kc.StreamingConnectionIdleTimeout,
-		kc.Recorder)
+		kc.Recorder,
+		cadvisorInterface)
 
 	if err != nil {
 		return nil, err
@@ -414,7 +439,6 @@ func createAndInitKubelet(kc *KubeletConfig, pc *config.PodConfig) (*kubelet.Kub
 	k.BirthCry()
 
 	go k.GarbageCollectLoop()
-	go kubelet.MonitorCAdvisor(k, kc.CAdvisorPort)
 
 	return k, nil
 }
