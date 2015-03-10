@@ -95,6 +95,32 @@ type EC2 interface {
 type AWSMetadata interface {
 	// Query the EC2 metadata service (used to discover instance-id etc)
 	GetMetaData(key string) ([]byte, error)
+
+	// TODO: It is weird that these take a region.  I suspect it won't work cross-region anwyay.
+	// TODO: Refactor to use a load balancer object?
+	// List load balancers
+	DescribeLoadBalancers(region string, name string) (map[string]elb.LoadBalancer, error)
+	// Create load balancer
+	CreateLoadBalancer(region string, request *elb.CreateLoadBalancer) (string, error)
+	// Add backends to load balancer
+	RegisterInstancesWithLoadBalancer(region string, request *elb.RegisterInstancesWithLoadBalancer) ([]elb.Instance, error)
+	// Remove backends from load balancer
+	DeregisterInstancesFromLoadBalancer(region string, request *elb.DeregisterInstancesFromLoadBalancer) ([]elb.Instance, error)
+	// Delete load balancer
+	DeleteLoadBalancer(region string, name string) error
+
+	// List subnets
+	DescribeSubnets(subnetIds []string, filterVpcId string) ([]ec2.Subnet, error)
+
+	// List security groups
+	DescribeSecurityGroups(groupIds []string, filterName string, filterVpcId string) ([]ec2.SecurityGroupInfo, error)
+	// Create security group and return the id
+	CreateSecurityGroup(vpcId string, name string, description string) (string, error)
+	// Authorize security group ingress
+	AuthorizeSecurityGroupIngress(securityGroupId string, perms []ec2.IPPerm) (resp *ec2.SimpleResp, err error)
+
+	// List VPCs
+	ListVpcs(filterName string) ([]ec2.VPC, error)
 }
 
 type VolumeOptions struct {
@@ -173,6 +199,7 @@ func (self *goamzEC2) ListVPCs(filterName string) ([]ec2.VPC, error) {
 	client := self.ec2
 
 	// TODO: How do we want to identify our VPC?  Issue #6006
+
 	filter := ec2.NewFilter()
 	filter.Add("tag:Name", filterName)
 
