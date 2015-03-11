@@ -630,7 +630,7 @@ func TestPopulateNodeAddresses(t *testing.T) {
 	}{
 		{
 			nodes:     &api.NodeList{Items: []api.Node{*newNode("node0"), *newNode("node1")}},
-			fakeCloud: &fake_cloud.FakeCloud{IP: net.ParseIP("1.2.3.4")},
+			fakeCloud: &fake_cloud.FakeCloud{Addresses: []api.NodeAddress{{Type: api.NodeLegacyHostIP, Address: "1.2.3.4"}}},
 			expectedAddresses: []api.NodeAddress{
 				{Type: api.NodeLegacyHostIP, Address: "1.2.3.4"},
 			},
@@ -1020,7 +1020,7 @@ func TestSyncNodeStatus(t *testing.T) {
 				Err:    nil,
 			},
 			fakeCloud: &fake_cloud.FakeCloud{
-				IP: net.ParseIP("1.2.3.4"),
+				Addresses: []api.NodeAddress{{Type: api.NodeLegacyHostIP, Address: "1.2.3.4"}},
 			},
 			expectedNodes: []*api.Node{
 				{

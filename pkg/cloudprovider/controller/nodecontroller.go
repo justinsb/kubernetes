@@ -266,42 +266,56 @@ func latestReadyTime(node *api.Node) util.Time {
 
 // PopulateAddresses queries Address for given list of nodes.
 func (s *NodeController) PopulateAddresses(nodes *api.NodeList) (*api.NodeList, error) {
-	if s.isRunningCloudProvider() {
-		instances, ok := s.cloud.Instances()
-		if !ok {
-			return nodes, ErrCloudInstance
+	for i := range nodes.Items {
+		node := &nodes.Items[i]
+		nodeAddresses, err := s.getNodeAddresses(node)
+		if err != nil {
+			return nil, err
 		}
-		for i := range nodes.Items {
-			node := &nodes.Items[i]
-			hostIP, err := instances.IPAddress(node.Name)
-			if err != nil {
-				glog.Errorf("error getting instance ip address for %s: %v", node.Name, err)
-			} else {
-				address := api.NodeAddress{Type: api.NodeLegacyHostIP, Address: hostIP.String()}
-				api.AddToNodeAddresses(&node.Status.Addresses, address)
-			}
-		}
-	} else {
-		for i := range nodes.Items {
-			node := &nodes.Items[i]
-			addr := net.ParseIP(node.Name)
-			if addr != nil {
-				address := api.NodeAddress{Type: api.NodeLegacyHostIP, Address: addr.String()}
-				api.AddToNodeAddresses(&node.Status.Addresses, address)
-			} else {
-				addrs, err := lookupIP(node.Name)
-				if err != nil {
-					glog.Errorf("Can't get ip address of node %s: %v", node.Name, err)
-				} else if len(addrs) == 0 {
-					glog.Errorf("No ip address for node %v", node.Name)
-				} else {
-					address := api.NodeAddress{Type: api.NodeLegacyHostIP, Address: addrs[0].String()}
-					api.AddToNodeAddresses(&node.Status.Addresses, address)
-				}
-			}
+		if nodeAddresses != nil {
+			api.AddToNodeAddresses(&node.Status.Addresses, nodeAddresses...)
 		}
 	}
 	return nodes, nil
+}
+
+// getNodeAddresses gets NodeAddresses for a given node.
+func (s *NodeController) getNodeAddresses(node *api.Node) ([]api.NodeAddress, error) {
+	if s.isRunningCloudProvider() {
+		instances, ok := s.cloud.Instances()
+		if !ok {
+			return nil, ErrCloudInstance
+		}
+
+		nodeAddresses, err := instances.NodeAddresses(node.Name)
+		if err != nil {
+			glog.Errorf("error getting instance ip address for %s: %v", node.Name, err)
+			return nil, nil
+		} else {
+			return nodeAddresses, nil
+		}
+	} else {
+		nodeAddresses := []api.NodeAddress{}
+
+		addr := net.ParseIP(node.Name)
+		if addr != nil {
+			address := api.NodeAddress{Type: api.NodeLegacyHostIP, Address: addr.String()}
+			nodeAddresses = append(nodeAddresses, address)
+		} else {
+			addrs, err := lookupIP(node.Name)
+			if err != nil {
+				glog.Errorf("Can't get ip address of node %s: %v", node.Name, err)
+			} else if len(addrs) == 0 {
+				glog.Errorf("No ip address for node %v", node.Name)
+			} else {
+				// We don't return multiple HostIPs, because this is aiming for legacy compatibility
+				address := api.NodeAddress{Type: api.NodeLegacyHostIP, Address: addrs[0].String()}
+				nodeAddresses = append(nodeAddresses, address)
+			}
+		}
+
+		return nodeAddresses, nil
+	}
 }
 
 // DoChecks performs health checking for given list of nodes.
