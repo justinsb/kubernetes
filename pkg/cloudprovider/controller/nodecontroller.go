@@ -299,7 +299,7 @@ func (s *NodeController) getNodeAddresses(node *api.Node) ([]api.NodeAddress, er
 			address := api.NodeAddress{Type: api.NodeLegacyHostIP, Address: addr.String()}
 			nodeAddresses = append(nodeAddresses, address)
 		} else {
-			addrs, err := lookupIP(node.Name)
+			addrs, err := s.lookupIP(node.Name)
 			if err != nil {
 				glog.Errorf("Can't get ip address of node %s: %v", node.Name, err)
 			} else if len(addrs) == 0 {

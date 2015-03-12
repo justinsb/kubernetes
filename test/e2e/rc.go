@@ -54,6 +54,48 @@ var _ = Describe("ReplicationController", func() {
 	})
 })
 
+// Finds the NodeAddress which maximizes scoreFn
+func findBest(candidates []api.NodeAddress, scoreFn func(*api.NodeAddress) int) *api.NodeAddress {
+	var best *api.NodeAddress
+	bestScore := 0
+
+	for i := range candidates {
+		score := scoreFn(&candidates[i])
+		if best != nil && score < bestScore {
+			continue
+		}
+
+		best = &candidates[i]
+		bestScore = score
+	}
+
+	return best
+}
+
+// Scoring function to pick a NodeAddress for health-checking
+func scoreForHealthCheck(a *api.NodeAddress) int {
+	score := 0
+	switch a.Type {
+	case api.NodeExternalIP:
+		score += 4
+	case api.NodeHostName:
+		score += 3
+	case api.NodeLegacyHostIP:
+		score += 2
+	case api.NodeInternalIP:
+		score += 1
+	}
+	return score
+}
+
+func getHealthCheckAddress(node *api.Node) string {
+	nodeAddress := findBest(node.Status.Addresses, scoreForHealthCheck)
+	if nodeAddress == nil {
+		return ""
+	}
+	return nodeAddress.Address
+}
+
 // A basic test to check the deployment of an image using
 // a replication controller. The image serves its hostname
 // which is checked for each replica.
@@ -144,6 +186,7 @@ func ServeImageOrFail(c *client.Client, test string, image string) {
 			Expect(err).NotTo(HaveOccurred())
 			if p.Status.HostIP != "" {
 				Logf("Controller %s: Replica %d has hostIP: %s", name, i+1, p.Status.HostIP)
+				Logf("Controller %s: Replica %d has status: %v", name, i+1, p.Status)
 				break
 			}
 			if time.Since(t) >= hostIPTimeout {
@@ -159,6 +202,15 @@ func ServeImageOrFail(c *client.Client, test string, image string) {
 	pods, err = c.Pods(ns).List(label)
 	Expect(err).NotTo(HaveOccurred())
 
+	// List the nodes, so we can get the external IP
+	By("Fetching node information")
+	nodes, err := c.Nodes().List()
+	Expect(err).NotTo(HaveOccurred())
+	nodeMap := make(map[string]api.Node)
+	for _, node := range nodes.Items {
+		nodeMap[node.Name] = node
+	}
+
 	// Verify that something is listening.
 	By("Trying to dial each unique pod")
 
@@ -169,6 +221,18 @@ func ServeImageOrFail(c *client.Client, test string, image string) {
 			Name(string(pod.Name)).
 			Do().
 			Raw()
+		//		node, found := nodeMap[pod.Status.Host]
+		//		Expect(found).To(BeTrue())
+		//
+		//		Logf("Pod: %s: Found node: %v", pod.Name, node)
+		//
+		//		hostAddress := getHealthCheckAddress(&node)
+		//		Expect(hostAddress).ToNot(BeEmpty())
+		//
+		//		Logf("Pod: %s: Chose node address: %s", pod.Name, hostAddress)
+		//
+		//		resp, err := http.Get(fmt.Sprintf("http://%s:8080", hostAddress))
+
 		if err != nil {
 			Failf("Controller %s: Failed to GET from replica %d: %v", name, i+1, err)
 		}
