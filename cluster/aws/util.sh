@@ -244,17 +244,17 @@ function upload-server-tars() {
 
   local -r staging_path="devel"
 
-  echo "+++ Staging server tars to S3 Storage: ${AWS_S3_BUCKET}/${staging_path}"
+  echo "+++ Staging server tars to S3 Storage: ${staging_bucket}/${staging_path}"
 
   local server_binary_path="${staging_path}/${SERVER_BINARY_TAR##*/}"
-  aws s3 cp "${SERVER_BINARY_TAR}" "s3://${AWS_S3_BUCKET}/${server_binary_path}"
-  aws s3api put-object-acl --bucket ${AWS_S3_BUCKET} --key "${server_binary_path}" --grant-read 'uri="http://acs.amazonaws.com/groups/global/AllUsers"'
-  SERVER_BINARY_TAR_URL="${s3_url_base}/${AWS_S3_BUCKET}/${server_binary_path}"
+  aws s3 cp "${SERVER_BINARY_TAR}" "s3://${staging_bucket}/${server_binary_path}"
+  aws s3api put-object-acl --bucket ${staging_bucket} --key "${server_binary_path}" --grant-read 'uri="http://acs.amazonaws.com/groups/global/AllUsers"'
+  SERVER_BINARY_TAR_URL="${s3_url_base}/${staging_bucket}/${server_binary_path}"
 
   local salt_tar_path="${staging_path}/${SALT_TAR##*/}"
-  aws s3 cp "${SALT_TAR}" "s3://${AWS_S3_BUCKET}/${salt_tar_path}"
-  aws s3api put-object-acl --bucket ${AWS_S3_BUCKET} --key "${salt_tar_path}" --grant-read 'uri="http://acs.amazonaws.com/groups/global/AllUsers"'
-  SALT_TAR_URL="${s3_url_base}/${AWS_S3_BUCKET}/${salt_tar_path}"
+  aws s3 cp "${SALT_TAR}" "s3://${staging_bucket}/${salt_tar_path}"
+  aws s3api put-object-acl --bucket ${staging_bucket} --key "${salt_tar_path}" --grant-read 'uri="http://acs.amazonaws.com/groups/global/AllUsers"'
+  SALT_TAR_URL="${s3_url_base}/${staging_bucket}/${salt_tar_path}"
 }
 
 
