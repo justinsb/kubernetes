@@ -29,6 +29,7 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/rest/resttest"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/apiserver"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/registry/pod"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
@@ -179,7 +180,7 @@ func TestListError(t *testing.T) {
 	storage, _, _ := NewREST(helper, nil)
 	cache := &fakeCache{}
 	storage = storage.WithPodStatus(cache)
-	pods, err := storage.List(api.NewDefaultContext(), labels.Everything(), labels.Everything())
+	pods, err := storage.List(api.NewDefaultContext(), labels.Everything(), fields.Everything())
 	if err != fakeEtcdClient.Err {
 		t.Fatalf("Expected %#v, Got %#v", fakeEtcdClient.Err, err)
 	}
@@ -208,7 +209,7 @@ func TestListCacheError(t *testing.T) {
 	cache := &fakeCache{errorToReturn: client.ErrPodInfoNotAvailable}
 	storage = storage.WithPodStatus(cache)
 
-	pods, err := storage.List(api.NewDefaultContext(), labels.Everything(), labels.Everything())
+	pods, err := storage.List(api.NewDefaultContext(), labels.Everything(), fields.Everything())
 	if err != nil {
 		t.Fatalf("Expected no error, got %#v", err)
 	}
@@ -232,7 +233,7 @@ func TestListEmptyPodList(t *testing.T) {
 	storage, _, _ := NewREST(helper, nil)
 	cache := &fakeCache{}
 	storage = storage.WithPodStatus(cache)
-	pods, err := storage.List(api.NewContext(), labels.Everything(), labels.Everything())
+	pods, err := storage.List(api.NewContext(), labels.Everything(), fields.Everything())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -271,7 +272,7 @@ func TestListPodList(t *testing.T) {
 	cache := &fakeCache{statusToReturn: &api.PodStatus{Phase: api.PodRunning}}
 	storage = storage.WithPodStatus(cache)
 
-	podsObj, err := storage.List(api.NewDefaultContext(), labels.Everything(), labels.Everything())
+	podsObj, err := storage.List(api.NewDefaultContext(), labels.Everything(), fields.Everything())
 	pods := podsObj.(*api.PodList)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -337,16 +338,16 @@ func TestListPodListSelection(t *testing.T) {
 			label:       "label=qux",
 			expectedIDs: util.NewStringSet("qux"),
 		}, {
-			field:       "Status.Phase=Failed",
+			field:       "status.phase=Failed",
 			expectedIDs: util.NewStringSet("baz"),
 		}, {
-			field:       "Status.Host=barhost",
+			field:       "status.host=barhost",
 			expectedIDs: util.NewStringSet("bar"),
 		}, {
-			field:       "Status.Host=",
+			field:       "status.host=",
 			expectedIDs: util.NewStringSet("foo", "baz", "qux", "zot"),
 		}, {
-			field:       "Status.Host!=",
+			field:       "status.host!=",
 			expectedIDs: util.NewStringSet("bar"),
 		},
 	}
@@ -357,7 +358,7 @@ func TestListPodListSelection(t *testing.T) {
 			t.Errorf("unexpected error: %v", err)
 			continue
 		}
-		field, err := labels.ParseSelector(item.field)
+		field, err := fields.ParseSelector(item.field)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 			continue
@@ -1089,28 +1090,28 @@ func TestEtcdCreateBinding(t *testing.T) {
 		"badKind": {
 			binding: api.Binding{
 				ObjectMeta: api.ObjectMeta{Namespace: api.NamespaceDefault, Name: "foo"},
-				Target:     api.ObjectReference{Name: "machine", Kind: "unknown"},
+				Target:     api.ObjectReference{Name: "machine1", Kind: "unknown"},
 			},
 			errOK: func(err error) bool { return errors.IsInvalid(err) },
 		},
 		"emptyKind": {
 			binding: api.Binding{
 				ObjectMeta: api.ObjectMeta{Namespace: api.NamespaceDefault, Name: "foo"},
-				Target:     api.ObjectReference{Name: "machine"},
+				Target:     api.ObjectReference{Name: "machine2"},
 			},
 			errOK: func(err error) bool { return err == nil },
 		},
 		"kindNode": {
 			binding: api.Binding{
 				ObjectMeta: api.ObjectMeta{Namespace: api.NamespaceDefault, Name: "foo"},
-				Target:     api.ObjectReference{Name: "machine", Kind: "Node"},
+				Target:     api.ObjectReference{Name: "machine3", Kind: "Node"},
 			},
 			errOK: func(err error) bool { return err == nil },
 		},
 		"kindMinion": {
 			binding: api.Binding{
 				ObjectMeta: api.ObjectMeta{Namespace: api.NamespaceDefault, Name: "foo"},
-				Target:     api.ObjectReference{Name: "machine", Kind: "Minion"},
+				Target:     api.ObjectReference{Name: "machine4", Kind: "Minion"},
 			},
 			errOK: func(err error) bool { return err == nil },
 		},
@@ -1123,13 +1124,22 @@ func TestEtcdCreateBinding(t *testing.T) {
 			},
 			E: tools.EtcdErrorNotFound,
 		}
-		fakeClient.Set("/registry/nodes/machine/boundpods", runtime.EncodeOrDie(latest.Codec, &api.BoundPods{}), 0)
+		path := fmt.Sprintf("/registry/nodes/%v/boundpods", test.binding.Target.Name)
+		fakeClient.Set(path, runtime.EncodeOrDie(latest.Codec, &api.BoundPods{}), 0)
 		if _, err := registry.Create(ctx, validNewPod()); err != nil {
 			t.Fatalf("%s: unexpected error: %v", k, err)
 		}
-		fakeClient.Set("/registry/nodes/machine/boundpods", runtime.EncodeOrDie(latest.Codec, &api.BoundPods{}), 0)
+		fakeClient.Set(path, runtime.EncodeOrDie(latest.Codec, &api.BoundPods{}), 0)
 		if _, err := bindingRegistry.Create(ctx, &test.binding); !test.errOK(err) {
 			t.Errorf("%s: unexpected error: %v", k, err)
+		} else if err == nil {
+			// If bind succeeded, verify Host field in pod's Spec.
+			pod, err := registry.Get(ctx, validNewPod().ObjectMeta.Name)
+			if err != nil {
+				t.Errorf("%s: unexpected error: %v", k, err)
+			} else if pod.(*api.Pod).Spec.Host != test.binding.Target.Name {
+				t.Errorf("%s: expected: %v, got: %v", k, pod.(*api.Pod).Spec.Host, test.binding.Target.Name)
+			}
 		}
 	}
 }
@@ -1451,7 +1461,7 @@ func TestEtcdEmptyList(t *testing.T) {
 		E: nil,
 	}
 
-	obj, err := registry.List(ctx, labels.Everything(), labels.Everything())
+	obj, err := registry.List(ctx, labels.Everything(), fields.Everything())
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -1469,7 +1479,7 @@ func TestEtcdListNotFound(t *testing.T) {
 		R: &etcd.Response{},
 		E: tools.EtcdErrorNotFound,
 	}
-	obj, err := registry.List(ctx, labels.Everything(), labels.Everything())
+	obj, err := registry.List(ctx, labels.Everything(), fields.Everything())
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -1504,7 +1514,7 @@ func TestEtcdList(t *testing.T) {
 		},
 		E: nil,
 	}
-	obj, err := registry.List(ctx, labels.Everything(), labels.Everything())
+	obj, err := registry.List(ctx, labels.Everything(), fields.Everything())
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -1524,7 +1534,7 @@ func TestEtcdWatchPods(t *testing.T) {
 	ctx := api.NewDefaultContext()
 	watching, err := registry.Watch(ctx,
 		labels.Everything(),
-		labels.Everything(),
+		fields.Everything(),
 		"1",
 	)
 	if err != nil {
@@ -1551,7 +1561,7 @@ func TestEtcdWatchPodsMatch(t *testing.T) {
 	ctx := api.NewDefaultContext()
 	watching, err := registry.Watch(ctx,
 		labels.SelectorFromSet(labels.Set{"name": "foo"}),
-		labels.Everything(),
+		fields.Everything(),
 		"1",
 	)
 	if err != nil {
@@ -1590,7 +1600,7 @@ func TestEtcdWatchPodsNotMatch(t *testing.T) {
 	ctx := api.NewDefaultContext()
 	watching, err := registry.Watch(ctx,
 		labels.SelectorFromSet(labels.Set{"name": "foo"}),
-		labels.Everything(),
+		fields.Everything(),
 		"1",
 	)
 	if err != nil {

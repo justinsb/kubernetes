@@ -24,6 +24,7 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/rest"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/validation"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/registry/generic"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
@@ -116,7 +117,7 @@ func PodStatusReset(cache PodStatusGetter) rest.ObjectFunc {
 }
 
 // MatchPod returns a generic matcher for a given label and field selector.
-func MatchPod(label, field labels.Selector) generic.Matcher {
+func MatchPod(label labels.Selector, field fields.Selector) generic.Matcher {
 	return generic.MatcherFunc(func(obj runtime.Object) (bool, error) {
 		podObj, ok := obj.(*api.Pod)
 		if !ok {
@@ -132,8 +133,8 @@ func MatchPod(label, field labels.Selector) generic.Matcher {
 func PodToSelectableFields(pod *api.Pod) labels.Set {
 	return labels.Set{
 		"name":         pod.Name,
-		"Status.Phase": string(pod.Status.Phase),
-		"Status.Host":  pod.Status.Host,
+		"status.phase": string(pod.Status.Phase),
+		"status.host":  pod.Status.Host,
 	}
 }
 

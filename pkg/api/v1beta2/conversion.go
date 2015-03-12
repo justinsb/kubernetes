@@ -36,6 +36,7 @@ func init() {
 	newer.Scheme.AddStructFieldConversion(newer.TypeMeta{}, "TypeMeta", TypeMeta{}, "TypeMeta")
 	newer.Scheme.AddStructFieldConversion(newer.ObjectMeta{}, "ObjectMeta", TypeMeta{}, "TypeMeta")
 	newer.Scheme.AddStructFieldConversion(newer.ListMeta{}, "ListMeta", TypeMeta{}, "TypeMeta")
+	newer.Scheme.AddStructFieldConversion(newer.Endpoints{}, "Endpoints", Endpoints{}, "Endpoints")
 
 	// TODO: scope this to a specific type once that becomes available and remove the Event conversion functions below
 	// newer.Scheme.AddStructFieldConversion(string(""), "Status", string(""), "Condition")
@@ -619,6 +620,9 @@ func init() {
 			if err := s.Convert(&in.Status.Addresses, &out.Status.Addresses, 0); err != nil {
 				return err
 			}
+			if err := s.Convert(&in.Status.NodeInfo, &out.Status.NodeInfo, 0); err != nil {
+				return err
+			}
 
 			for _, address := range in.Status.Addresses {
 				if address.Type == newer.NodeLegacyHostIP {
@@ -646,6 +650,9 @@ func init() {
 				return err
 			}
 			if err := s.Convert(&in.Status.Addresses, &out.Status.Addresses, 0); err != nil {
+				return err
+			}
+			if err := s.Convert(&in.Status.NodeInfo, &out.Status.NodeInfo, 0); err != nil {
 				return err
 			}
 
@@ -691,6 +698,9 @@ func init() {
 				return err
 			}
 			if err := s.Convert(&in.Spec, &out.Spec, 0); err != nil {
+				return err
+			}
+			if err := s.Convert(&in.Status, &out.Status, 0); err != nil {
 				return err
 			}
 			if err := s.Convert(&in.Labels, &out.ObjectMeta.Labels, 0); err != nil {
@@ -1084,7 +1094,17 @@ func init() {
 			}
 			for i := range in.Endpoints {
 				ep := &in.Endpoints[i]
-				out.Endpoints = append(out.Endpoints, net.JoinHostPort(ep.IP, strconv.Itoa(ep.Port)))
+				hostPort := net.JoinHostPort(ep.IP, strconv.Itoa(ep.Port))
+				out.Endpoints = append(out.Endpoints, hostPort)
+				if ep.TargetRef != nil {
+					target := EndpointObjectReference{
+						Endpoint: hostPort,
+					}
+					if err := s.Convert(ep.TargetRef, &target.ObjectReference, 0); err != nil {
+						return err
+					}
+					out.TargetRefs = append(out.TargetRefs, target)
+				}
 			}
 			return nil
 		},
@@ -1111,6 +1131,15 @@ func init() {
 					return err
 				}
 				ep.Port = pn
+				for j := range in.TargetRefs {
+					if in.TargetRefs[j].Endpoint != in.Endpoints[i] {
+						continue
+					}
+					ep.TargetRef = &newer.ObjectReference{}
+					if err := s.Convert(&in.TargetRefs[j], ep.TargetRef, 0); err != nil {
+						return err
+					}
+				}
 			}
 			return nil
 		},
@@ -1271,12 +1300,12 @@ func init() {
 			case "name":
 				return "name", value, nil
 			case "DesiredState.Host":
-				return "Status.Host", value, nil
+				return "status.host", value, nil
 			case "DesiredState.Status":
 				podStatus := PodStatus(value)
 				var internalValue newer.PodPhase
 				newer.Scheme.Convert(&podStatus, &internalValue)
-				return "Status.Phase", string(internalValue), nil
+				return "status.phase", string(internalValue), nil
 			default:
 				return "", "", fmt.Errorf("field label not supported: %s", label)
 			}

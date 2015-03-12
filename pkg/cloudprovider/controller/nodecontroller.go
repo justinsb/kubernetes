@@ -40,20 +40,16 @@ var (
 	ErrCloudInstance  = errors.New("cloud provider doesn't support instances.")
 )
 
-var (
-	// aliased to allow mocking in tests
-	lookupIP = net.LookupIP
-)
-
 type NodeController struct {
 	cloud              cloudprovider.Interface
 	matchRE            string
 	staticResources    *api.NodeResources
 	nodes              []string
 	kubeClient         client.Interface
-	kubeletClient      client.KubeletHealthChecker
+	kubeletClient      client.KubeletClient
 	registerRetryCount int
 	podEvictionTimeout time.Duration
+	lookupIP           func(host string) ([]net.IP, error)
 }
 
 // NewNodeController returns a new node controller to sync instances from cloudprovider.
@@ -65,7 +61,7 @@ func NewNodeController(
 	nodes []string,
 	staticResources *api.NodeResources,
 	kubeClient client.Interface,
-	kubeletClient client.KubeletHealthChecker,
+	kubeletClient client.KubeletClient,
 	registerRetryCount int,
 	podEvictionTimeout time.Duration) *NodeController {
 	return &NodeController{
@@ -77,6 +73,7 @@ func NewNodeController(
 		kubeletClient:      kubeletClient,
 		registerRetryCount: registerRetryCount,
 		podEvictionTimeout: podEvictionTimeout,
+		lookupIP:           net.LookupIP,
 	}
 }
 
@@ -219,7 +216,7 @@ func (s *NodeController) SyncNodeStatus() error {
 	if err != nil {
 		return err
 	}
-	nodes = s.DoChecks(nodes)
+	nodes = s.UpdateNodesStatus(nodes)
 	nodes, err = s.PopulateAddresses(nodes)
 	if err != nil {
 		return err
@@ -318,18 +315,33 @@ func (s *NodeController) getNodeAddresses(node *api.Node) ([]api.NodeAddress, er
 	}
 }
 
-// DoChecks performs health checking for given list of nodes.
-func (s *NodeController) DoChecks(nodes *api.NodeList) *api.NodeList {
+// UpdateNodesStatus performs health checking for given list of nodes.
+func (s *NodeController) UpdateNodesStatus(nodes *api.NodeList) *api.NodeList {
 	var wg sync.WaitGroup
 	wg.Add(len(nodes.Items))
 	for i := range nodes.Items {
 		go func(node *api.Node) {
 			node.Status.Conditions = s.DoCheck(node)
+			if err := s.updateNodeInfo(node); err != nil {
+				glog.Errorf("Can't collect information for node %s: %v", node.Name, err)
+			}
 			wg.Done()
 		}(&nodes.Items[i])
 	}
 	wg.Wait()
 	return nodes
+}
+
+func (s *NodeController) updateNodeInfo(node *api.Node) error {
+	nodeInfo, err := s.kubeletClient.GetNodeInfo(node.Name)
+	if err != nil {
+		return err
+	}
+	for key, value := range nodeInfo.Capacity {
+		node.Spec.Capacity[key] = value
+	}
+	node.Status.NodeInfo = nodeInfo.NodeSystemInfo
+	return nil
 }
 
 // DoCheck performs health checking for given node.
