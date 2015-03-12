@@ -19,6 +19,86 @@
 2. ```cd kubernetes; make release```
 3. ```export PATH=$PATH:$PWD/_output/local/bin/<os>/<platform>```
 
+#### Create IAM instance profiles
+
+# TODO: Move to script?
+# TODO: Reduce permissions
+
+This profile will initially have no permissions, but you can add any needed permissions to it later.
+```
+cat > kubernetes-master-role.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": { "Service": "ec2.amazonaws.com"},
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+aws iam create-role --role-name kubernetes-master --assume-role-policy-document file://kubernetes-master-role.json
+
+cat > kubernetes-master-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["ec2:*"],
+      "Resource": ["*"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::kubernetes-*"
+      ]
+    }
+  ]
+}
+EOF
+aws iam put-role-policy --role-name kubernetes-master --policy-name kubernetes-master --policy-document file://kubernetes-master-policy.json
+
+aws iam create-instance-profile --instance-profile-name kubernetes-master
+aws iam add-role-to-instance-profile --instance-profile-name kubernetes-master --role-name kubernetes-master
+
+
+cat > kubernetes-minion-role.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": { "Service": "ec2.amazonaws.com"},
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+aws iam create-role --role-name kubernetes-minion --assume-role-policy-document file://kubernetes-minion-role.json
+
+cat > kubernetes-minion-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::kubernetes-*"
+      ]
+    }
+  ]
+}
+EOF
+aws iam put-role-policy --role-name kubernetes-minion --policy-name kubernetes-minion --policy-document file://kubernetes-minion-policy.json
+
+aws iam create-instance-profile --instance-profile-name kubernetes-minion
+aws iam add-role-to-instance-profile --instance-profile-name kubernetes-minion --role-name kubernetes-minion
+```
+
 #### Turn up the cluster
 ```
 export KUBERNETES_PROVIDER=aws
