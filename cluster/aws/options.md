@@ -5,6 +5,10 @@ specific to AWS are documented in this file, for cross-provider options see TODO
 
 This is a work-in-progress; not all options are documented yet!
 
+## KUBE_AWS_ZONE
+
+The AWS region to deploy to.  Defaults to us-west-2.
+
 ## AWS_IMAGE
 
 The AMI to use.  If not specified, the image will be selected based on the AWS region.
@@ -22,3 +26,12 @@ AWS_S3_BUCKET will default to a uniquely generated name, so you won't collide wi
 It is not a bad idea to set AWS_S3_BUCKET to something more human friendly.
 
 AWS_S3_REGION is useful for people that want to control their data location, because of regulatory restrictions for example.
+
+## MASTER_SIZE, MINION_SIZE
+
+The instance type to use for creating the master/minion.  Defaults to t2.micro.
+
+For production usage, we recommend bigger instances, for example:
+
+MASTER_SIZE=c4.large
+MINION_SIZE=r3.large
