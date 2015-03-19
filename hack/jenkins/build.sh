@@ -59,4 +59,10 @@ go run ./hack/e2e.go -v --build
     ./build/push-ci-build.sh
 }
 
-sha256sum _output/release-tars/kubernetes*.tar.gz
+if (which sha256sum); then
+  SHA_CMD="sha256sum"
+else
+  SHA_CMD="shasum -a 256"
+fi
+
+${SHA_CMD} _output/release-tars/kubernetes*.tar.gz
