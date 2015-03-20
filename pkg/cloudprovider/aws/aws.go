@@ -415,7 +415,7 @@ func (aws *AWSCloud) Clusters() (cloudprovider.Clusters, bool) {
 
 // TCPLoadBalancer returns an implementation of TCPLoadBalancer for Amazon Web Services.
 func (self *AWSCloud) TCPLoadBalancer() (cloudprovider.TCPLoadBalancer, bool) {
-	return self, false
+	return self, true
 }
 
 // Instances returns an implementation of Instances for Amazon Web Services.
@@ -430,7 +430,7 @@ func (aws *AWSCloud) Zones() (cloudprovider.Zones, bool) {
 
 // NodeAddresses is an implementation of Instances.NodeAddresses.
 func (aws *AWSCloud) NodeAddresses(name string) ([]api.NodeAddress, error) {
-	inst, err := aws.getInstancesByDnsName(name)
+	inst, err := aws.getInstanceByDnsName(name)
 	if err != nil {
 		return nil, err
 	}
@@ -567,7 +567,7 @@ func (aws *AWSCloud) List(filter string) ([]string, error) {
 
 // GetNodeResources implements Instances.GetNodeResources
 func (aws *AWSCloud) GetNodeResources(name string) (*api.NodeResources, error) {
-	instance, err := aws.getInstancesByDnsName(name)
+	instance, err := aws.getInstanceByDnsName(name)
 	if err != nil {
 		return nil, err
 	}
@@ -839,30 +839,30 @@ func (self *AWSCloud) ensureSecurityGroupIngess(securityGroupId string, sourceIp
 }
 
 // CreateTCPLoadBalancer implements TCPLoadBalancer.CreateTCPLoadBalancer
-func (self *AWSCloud) CreateTCPLoadBalancer(name, region string, externalIP net.IP, port int, hosts []string, affinity api.AffinityType) (net.IP, error) {
+func (self *AWSCloud) CreateTCPLoadBalancer(name, region string, externalIP net.IP, port int, hosts []string, affinity api.AffinityType) (string, error) {
 	glog.V(2).Infof("CreateTCPLoadBalancer(%v, %v, %v, %v, %v)", name, region, externalIP, port, hosts)
 
 	if affinity != api.AffinityTypeNone {
 		// ELB supports sticky sessions, but only when configured for HTTP/HTTPS
-		return nil, fmt.Errorf("unsupported load balancer affinity: %v", affinity)
+		return "", fmt.Errorf("unsupported load balancer affinity: %v", affinity)
 	}
 
 	if len(externalIP) > 0 {
-		return nil, fmt.Errorf("External IP cannot be specified for AWS ELB")
+		return "", fmt.Errorf("External IP cannot be specified for AWS ELB")
 	}
 
 	instances, err := self.getInstancesByDnsNames(hosts)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	vpc, err := self.findVpc()
 	if err != nil {
 		glog.Error("error finding vpc", err)
-		return nil, err
+		return "", err
 	}
 	if vpc == nil {
-		return nil, fmt.Errorf("Unable to find vpc")
+		return "", fmt.Errorf("Unable to find vpc")
 	}
 
 	// Construct list of configured subnets
@@ -870,7 +870,7 @@ func (self *AWSCloud) CreateTCPLoadBalancer(name, region string, externalIP net.
 	{
 		subnets, err := self.ec2.DescribeSubnets(nil, vpc.VpcId)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 
 		//	zones := []string{}
@@ -878,7 +878,7 @@ func (self *AWSCloud) CreateTCPLoadBalancer(name, region string, externalIP net.
 			subnetIds = append(subnetIds, subnet.SubnetId)
 			if !strings.HasPrefix(subnet.AvailabilityZone, region) {
 				glog.Error("found AZ that did not match region", subnet.AvailabilityZone, " vs ", region)
-				return nil, fmt.Errorf("invalid AZ for region")
+				return "", fmt.Errorf("invalid AZ for region")
 			}
 			//		zones = append(zones, subnet.AvailabilityZone)
 		}
@@ -889,7 +889,7 @@ func (self *AWSCloud) CreateTCPLoadBalancer(name, region string, externalIP net.
 	{
 		loadBalancer, err := self.describeLoadBalancer(region, name)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 
 		if loadBalancer == nil {
@@ -921,7 +921,7 @@ func (self *AWSCloud) CreateTCPLoadBalancer(name, region string, externalIP net.
 				// TODO: Should we do something more reliable ?? .Where("tag:kubernetes-id", kubernetesId)
 				securityGroups, err := self.ec2.DescribeSecurityGroups(nil, sgName, vpc.VpcId)
 				if err != nil {
-					return nil, err
+					return "", err
 				}
 				var securityGroupId string
 				for _, securityGroup := range securityGroups {
@@ -930,23 +930,23 @@ func (self *AWSCloud) CreateTCPLoadBalancer(name, region string, externalIP net.
 				if securityGroupId == "" {
 					securityGroupId, err = self.ec2.CreateSecurityGroup(vpc.VpcId, sgName, sgDescription)
 					if err != nil {
-						return nil, err
+						return "", err
 					}
 				}
 				_, err = self.ensureSecurityGroupIngess(securityGroupId, "0.0.0.0/0", "tcp", port, port)
 				if err != nil {
-					return nil, err
+					return "", err
 				}
 				createRequest.SecurityGroups = []string{securityGroupId}
 			}
 
 			if len(externalIP) > 0 {
-				return nil, fmt.Errorf("External IP cannot be specified for AWS ELB")
+				return "", fmt.Errorf("External IP cannot be specified for AWS ELB")
 			}
 
 			createdDnsName, err := self.ec2.CreateLoadBalancer(region, createRequest)
 			if err != nil {
-				return nil, err
+				return "", err
 			}
 			dnsName = createdDnsName
 			loadBalancerName = name
@@ -962,7 +962,7 @@ func (self *AWSCloud) CreateTCPLoadBalancer(name, region string, externalIP net.
 
 	attachedInstances, err := self.ec2.RegisterInstancesWithLoadBalancer(region, registerRequest)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	glog.V(1).Info("Updated instances registered with load-balancer", name, attachedInstances)
@@ -970,11 +970,7 @@ func (self *AWSCloud) CreateTCPLoadBalancer(name, region string, externalIP net.
 
 	// TODO: Wait for creation?
 
-	panic("ELB load balancers work in terms of DNS names")
-	//	loadBalancerInfo := &cloudprovider.LoadBalancerInfo{}
-	//	loadBalancerInfo.ExternalDnsName = dnsName
-	//	return loadBalancerInfo, nil
-	return nil, nil
+	return dnsName, nil
 }
 
 // DeleteTCPLoadBalancer implements TCPLoadBalancer.DeleteTCPLoadBalancer.
