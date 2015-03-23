@@ -32,9 +32,13 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/resource"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/cloudprovider"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 
 	"github.com/golang/glog"
 )
+
+const LOADBALANCER_NAME_PREFIX = "k8s_"
+const LOADBALANCER_TAG_NAME = "k8s:name"
 
 // TODO: Should we rename this to AWS (EBS & ELB are not technically part of EC2)
 // Abstraction over EC2, to allow mocking/other implementations
@@ -46,8 +50,9 @@ type EC2 interface {
 	GetMetaData(key string) ([]byte, error)
 
 	// TODO: It is weird that these take a region.  I suspect it won't work cross-region anwyay.
+	// TODO: Refactor to use a load balancer object?
 	// List load balancers
-	DescribeLoadBalancers(region string, name string) ([]elb.LoadBalancer, error)
+	DescribeLoadBalancers(region string, name string) (map[string]elb.LoadBalancer, error)
 	// Create load balancer
 	CreateLoadBalancer(region string, request *elb.CreateLoadBalancer) (string, error)
 	// Add backends to load balancer
@@ -179,14 +184,15 @@ func (self *goamzEC2) GetMetaData(key string) ([]byte, error) {
 }
 
 // Implements EC2.DescribeLoadBalancers
-func (self *goamzEC2) DescribeLoadBalancers(region string, name string) ([]elb.LoadBalancer, error) {
+func (self *goamzEC2) DescribeLoadBalancers(region string, findName string) (map[string]elb.LoadBalancer, error) {
 	client, err := self.getElbClient(region)
 	if err != nil {
 		return nil, err
 	}
 
 	request := &elb.DescribeLoadBalancer{}
-	request.Names = []string{name}
+	// Names are limited to 32 characters, so we must use tags
+	//request.Names = []string{findName}
 	response, err := client.DescribeLoadBalancers(request)
 	if err != nil {
 		elbError, ok := err.(*elb.Error)
@@ -197,7 +203,64 @@ func (self *goamzEC2) DescribeLoadBalancers(region string, name string) ([]elb.L
 		glog.Error("error describing load balancers: ", err)
 		return nil, err
 	}
-	return response.LoadBalancers, nil
+
+	loadBalancersByAwsId := map[string]elb.LoadBalancer{}
+	for _, loadBalancer := range response.LoadBalancers {
+		awsId := loadBalancer.LoadBalancerName
+		if !strings.HasPrefix(awsId, LOADBALANCER_NAME_PREFIX) {
+			continue
+		}
+
+		// TODO: Cache the name -> tag mapping (it should never change)
+		loadBalancersByAwsId[awsId] = loadBalancer
+	}
+
+	loadBalancersByName := map[string]elb.LoadBalancer{}
+	if len(loadBalancersByAwsId) != 0 {
+		describeTagsRequest := &elb.DescribeTags{}
+		describeTagsRequest.LoadBalancerNames = []string{}
+		for awsId := range loadBalancersByAwsId {
+			describeTagsRequest.LoadBalancerNames = append(describeTagsRequest.LoadBalancerNames, awsId)
+		}
+		describeTagsResponse, err := client.DescribeTags(describeTagsRequest)
+		if err != nil {
+			glog.Error("error describing tags for load balancers: ", err)
+			return nil, err
+		}
+
+		if describeTagsResponse.NextToken != "" {
+			// TODO: Implement this
+			err := fmt.Errorf("error describing tags for load balancers - pagination not implemented")
+			return nil, err
+		}
+
+		for _, loadBalancerTag := range describeTagsResponse.LoadBalancerTags {
+			awsId := loadBalancerTag.LoadBalancerName
+			name := ""
+			for _, tag := range loadBalancerTag.Tags {
+				if tag.Key == LOADBALANCER_TAG_NAME {
+					name = tag.Value
+				}
+			}
+			if name == "" {
+				glog.Warning("Ignoring load balancer with no k8s name tag: ", awsId)
+				continue
+			}
+
+			if findName != "" && name != findName {
+				continue
+			}
+
+			loadBalancer, ok := loadBalancersByAwsId[awsId]
+			if !ok {
+				// This might almost be panic-worthy!
+				glog.Error("unexpected internal error - did not find load balancer")
+				continue
+			}
+			loadBalancersByName[name] = loadBalancer
+		}
+	}
+	return loadBalancersByName, nil
 }
 
 // Implements EC2.CreateLoadBalancer
@@ -380,7 +443,7 @@ func newAWSCloud(config io.Reader, authFunc AuthFunc) (*AWSCloud, error) {
 		return nil, fmt.Errorf("not a valid AWS region: %s", cfg.Global.Region)
 	}
 
-    ec2, err := newGoamzEC2(auth, cfg.Global.Region)
+	ec2, err := newGoamzEC2(auth, cfg.Global.Region)
 	if err != nil {
 		return nil, err
 	}
@@ -602,7 +665,7 @@ func getResourcesByInstanceType(instanceType string) (*api.NodeResources, error)
 		return makeNodeResources("t1", 0.125, 0.615)
 
 		// t2: Burstable
-	// TODO: The ECUs are fake values (because they are burstable), so this is just a guess...
+		// TODO: The ECUs are fake values (because they are burstable), so this is just a guess...
 	case "t2.micro":
 		return makeNodeResources("t2", 0.25, 1)
 	case "t2.small":
@@ -894,7 +957,9 @@ func (self *AWSCloud) CreateTCPLoadBalancer(name, region string, externalIP net.
 
 		if loadBalancer == nil {
 			createRequest := &elb.CreateLoadBalancer{}
-			createRequest.LoadBalancerName = name
+			// TODO: Is there a k8s UUID that it would make sense to use?
+			uuid := string(util.NewUUID())
+			createRequest.LoadBalancerName = LOADBALANCER_NAME_PREFIX + uuid
 
 			listener := elb.Listener{}
 			listener.InstancePort = int64(port)
@@ -949,10 +1014,11 @@ func (self *AWSCloud) CreateTCPLoadBalancer(name, region string, externalIP net.
 				return "", err
 			}
 			dnsName = createdDnsName
-			loadBalancerName = name
+			loadBalancerName = createRequest.LoadBalancerName
 		} else {
-			// TODO: Verify that load balancer configuration matches?++loadBalancerName = loadBalancer.LoadBalancerName
+			// TODO: Verify that load balancer configuration matches?
 			dnsName = loadBalancer.DNSName
+			loadBalancerName = loadBalancer.LoadBalancerName
 		}
 	}
 
@@ -977,7 +1043,17 @@ func (self *AWSCloud) CreateTCPLoadBalancer(name, region string, externalIP net.
 func (self *AWSCloud) DeleteTCPLoadBalancer(name, region string) error {
 	// TODO: Delete security group
 
-	err := self.ec2.DeleteLoadBalancer(region, name)
+	lb, err := self.describeLoadBalancer(region, name)
+	if err != nil {
+		return err
+	}
+
+	if lb == nil {
+		glog.Info("Load balancer already deleted: ", name)
+		return nil
+	}
+
+	err = self.ec2.DeleteLoadBalancer(region, lb.LoadBalancerName)
 	if err != nil {
 		return err
 	}
