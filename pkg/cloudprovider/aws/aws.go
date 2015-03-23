@@ -860,7 +860,7 @@ func (self *AWSCloud) ensureSecurityGroupIngess(securityGroupId string, sourceIp
 		return false, fmt.Errorf("security group not found")
 	}
 
-	if len(groups) != 0 {
+	if len(groups) != 1 {
 		return false, fmt.Errorf("multiple security groups found with same id")
 	}
 
