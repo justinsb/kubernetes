@@ -39,6 +39,7 @@ import (
 
 const LOADBALANCER_NAME_PREFIX = "k8s_"
 const LOADBALANCER_TAG_NAME = "k8s:name"
+const LOADBALANCER_NAME_MAXLEN = 32 // AWS limits load balancer names to 32 characters
 
 // TODO: Should we rename this to AWS (EBS & ELB are not technically part of EC2)
 // Abstraction over EC2, to allow mocking/other implementations
@@ -958,8 +959,12 @@ func (self *AWSCloud) CreateTCPLoadBalancer(name, region string, externalIP net.
 		if loadBalancer == nil {
 			createRequest := &elb.CreateLoadBalancer{}
 			// TODO: Is there a k8s UUID that it would make sense to use?
-			uuid := string(util.NewUUID())
-			createRequest.LoadBalancerName = LOADBALANCER_NAME_PREFIX + uuid
+			uuid := strings.Replace(string(util.NewUUID()), "-", "", -1)
+			awsId := LOADBALANCER_NAME_PREFIX + uuid
+			if len(awsId) > LOADBALANCER_NAME_MAXLEN {
+				awsId = awsId[:LOADBALANCER_NAME_MAXLEN]
+			}
+			createRequest.LoadBalancerName = awsId
 
 			listener := elb.Listener{}
 			listener.InstancePort = int64(port)
@@ -1009,6 +1014,7 @@ func (self *AWSCloud) CreateTCPLoadBalancer(name, region string, externalIP net.
 				return "", fmt.Errorf("External IP cannot be specified for AWS ELB")
 			}
 
+			glog.Info("Creating load balancer with name: ", createRequest.LoadBalancerName)
 			createdDnsName, err := self.ec2.CreateLoadBalancer(region, createRequest)
 			if err != nil {
 				return "", err
