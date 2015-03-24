@@ -37,7 +37,7 @@ import (
 	"github.com/golang/glog"
 )
 
-const LOADBALANCER_NAME_PREFIX = "k8s_"
+const LOADBALANCER_NAME_PREFIX = "k8s-"
 const LOADBALANCER_TAG_NAME = "k8s:name"
 const LOADBALANCER_NAME_MAXLEN = 32 // AWS limits load balancer names to 32 characters
 
