@@ -366,6 +366,7 @@ containers:
 			// Wait for the mirror pod to be created.
 			podName := fmt.Sprintf("%s-localhost", desc)
 			namespace := kubelet.NamespaceDefault
+			time.Sleep(30 * time.Second)
 			if err := wait.Poll(time.Second, time.Minute*2,
 				podRunning(c, namespace, podName)); err != nil {
 				if pods, err := c.Pods(namespace).List(labels.Everything()); err == nil {
