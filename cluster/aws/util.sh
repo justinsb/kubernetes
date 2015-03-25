@@ -33,12 +33,12 @@ function json_val {
 
 # TODO (ayurchuk) Refactor the get_* functions to use filters
 # TODO (bburns) Parameterize this for multiple cluster per project
-function get_instance_ids {
-  python -c "import json,sys; lst = [str(instance['InstanceId']) for reservation in json.load(sys.stdin)['Reservations'] for instance in reservation['Instances'] for tag in instance.get('Tags', []) if tag['Value'].startswith('${MASTER_TAG}') or tag['Value'].startswith('${MINION_TAG}')]; print ' '.join(lst)"
-}
 
 function get_vpc_id {
-  python -c 'import json,sys; lst = [str(vpc["VpcId"]) for vpc in json.load(sys.stdin)["Vpcs"] for tag in vpc.get("Tags", []) if tag["Value"] == "kubernetes-vpc"]; print "".join(lst)'
+  $AWS_CMD --output text describe-vpcs \
+           --filters Name=tag:Name,Values=kubernetes-vpc \
+                     Name=tag:KubernetesCluster,Values=${CLUSTER_ID} \
+           --query Vpcs[].VpcId
 }
 
 function get_subnet_id {
@@ -352,7 +352,7 @@ function kube-up {
 
   $AWS_CMD import-key-pair --key-name kubernetes --public-key-material "file://$AWS_SSH_KEY.pub" > $LOG 2>&1 || true
 
-  VPC_ID=$($AWS_CMD describe-vpcs | get_vpc_id)
+  VPC_ID=$(get_vpc_id)
 
   if [[ -z "$VPC_ID" ]]; then
 	  echo "Creating vpc."
@@ -360,6 +360,7 @@ function kube-up {
 	  $AWS_CMD modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-support '{"Value": true}' > $LOG
 	  $AWS_CMD modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-hostnames '{"Value": true}' > $LOG
 	  add-tag $VPC_ID Name kubernetes-vpc
+	  add-tag $VPC_ID KubernetesCluster ${CLUSTER_ID}
   fi
 
   echo "Using VPC $VPC_ID"
@@ -448,6 +449,7 @@ function kube-up {
     --user-data file://${KUBE_TEMP}/master-start.sh | json_val '["Instances"][0]["InstanceId"]')
   add-tag $master_id Name $MASTER_NAME
   add-tag $master_id Role $MASTER_TAG
+  add-tag $master_id KubernetesCluster ${CLUSTER_ID}
 
   echo "Waiting for master to be ready"
 
@@ -525,6 +527,7 @@ function kube-up {
 
     add-tag $minion_id Name ${MINION_NAMES[$i]}
     add-tag $minion_id Role $MINION_TAG
+    add-tag $minion_id KubernetesCluster ${CLUSTER_ID}
 
     sleep 3
     $AWS_CMD modify-instance-attribute --instance-id $minion_id --source-dest-check '{"Value": false}' > $LOG
@@ -682,30 +685,35 @@ EOF
 }
 
 function kube-down {
-  instance_ids=$($AWS_CMD describe-instances | get_instance_ids)
-  if [[ -n ${instance_ids} ]]; then
-    $AWS_CMD terminate-instances --instance-ids $instance_ids > $LOG
-    echo "Waiting for instances deleted"
-    while true; do
-      instance_states=$($AWS_CMD describe-instances --instance-ids $instance_ids | expect_instance_states terminated)
-      if [[ "$instance_states" == "" ]]; then
-        echo "All instances terminated"
-        break
-      else
-        echo "Instances not yet terminated: $instance_states"
-        echo "Sleeping for 3 seconds..."
-        sleep 3
-      fi
-    done
-  fi
-
-  echo "Deleting VPC"
-  vpc_id=$($AWS_CMD describe-vpcs | get_vpc_id)
+  vpc_id=$(get_vpc_id)
   if [[ -n "${vpc_id}" ]]; then
     elb_ids=$(get_elbs_in_vpc ${vpc_id})
     for elb_id in ${elb_ids}; do
       $AWS_ELB_CMD delete-load-balancer --load-balancer-name=${elb_id}
     done
+
+    echo "Deleting instances in VPC: ${vpc_id}"
+    instance_ids=$($AWS_CMD --output text describe-instances \
+                            --filters Name=vpc-id,Values=${vpc_id} \
+                                      Name=tag:KubernetesCluster,Values=${CLUSTER_ID} \
+                            --query Reservations[].Instances[].InstanceId)
+    if [[ -n ${instance_ids} ]]; then
+      $AWS_CMD terminate-instances --instance-ids $instance_ids > $LOG
+      echo "Waiting for instances deleted"
+      while true; do
+        instance_states=$($AWS_CMD describeaws -instances --instance-ids $instance_ids | expect_instance_states terminated)
+        if [[ "$instance_states" == "" ]]; then
+          echo "All instances terminated"
+          break
+        else
+          echo "Instances not yet terminated: $instance_states"
+          echo "Sleeping for 3 seconds..."
+          sleep 3
+        fi
+      done
+    fi
+
+    echo "Deleting VPC: ${vpc_id}"
 
     default_sg_id=$($AWS_CMD --output text describe-security-groups \
                              --filters Name=vpc-id,Values=$vpc_id Name=group-name,Values=default \
