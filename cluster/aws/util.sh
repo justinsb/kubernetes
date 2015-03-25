@@ -687,11 +687,6 @@ EOF
 function kube-down {
   vpc_id=$(get_vpc_id)
   if [[ -n "${vpc_id}" ]]; then
-    elb_ids=$(get_elbs_in_vpc ${vpc_id})
-    for elb_id in ${elb_ids}; do
-      $AWS_ELB_CMD delete-load-balancer --load-balancer-name=${elb_id}
-    done
-
     echo "Deleting instances in VPC: ${vpc_id}"
     instance_ids=$($AWS_CMD --output text describe-instances \
                             --filters Name=vpc-id,Values=${vpc_id} \
@@ -707,6 +702,27 @@ function kube-down {
           break
         else
           echo "Instances not yet terminated: $instance_states"
+          echo "Sleeping for 3 seconds..."
+          sleep 3
+        fi
+      done
+    fi
+
+    elb_ids=$(get_elbs_in_vpc ${vpc_id})
+    if [[ -n ${elb_ids} ]]; then
+      echo "Deleting ELBs in: ${vpc_id}"
+      for elb_id in ${elb_ids}; do
+        $AWS_ELB_CMD delete-load-balancer --load-balancer-name=${elb_id}
+      done
+
+      echo "Waiting for ELBs to stop"
+      while true; do
+        elb_ids=$(get_elbs_in_vpc ${vpc_id})
+        if [[ -z "$elb_ids"  ]]; then
+          echo "All ELBs deleted"
+          break
+        else
+          echo "ELBs not yet terminated: $elb_ids"
           echo "Sleeping for 3 seconds..."
           sleep 3
         fi
