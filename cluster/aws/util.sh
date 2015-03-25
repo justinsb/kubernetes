@@ -701,7 +701,7 @@ function kube-down {
       $AWS_CMD terminate-instances --instance-ids $instance_ids > $LOG
       echo "Waiting for instances deleted"
       while true; do
-        instance_states=$($AWS_CMD describeaws -instances --instance-ids $instance_ids | expect_instance_states terminated)
+        instance_states=$($AWS_CMD describe-instances --instance-ids $instance_ids | expect_instance_states terminated)
         if [[ "$instance_states" == "" ]]; then
           echo "All instances terminated"
           break
