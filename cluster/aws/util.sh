@@ -520,7 +520,7 @@ function kube-up {
     sleep 10
   done
 
-
+  MINION_IDS=()
   for (( i=0; i<${#MINION_NAMES[@]}; i++)); do
     echo "Starting Minion (${MINION_NAMES[$i]})"
     (
@@ -547,16 +547,19 @@ function kube-up {
     add-tag $minion_id Role $MINION_TAG
     add-tag $minion_id KubernetesCluster ${CLUSTER_ID}
 
-    sleep 3
-    $AWS_CMD modify-instance-attribute --instance-id $minion_id --source-dest-check '{"Value": false}' > $LOG
+    MINION_IDS[$i]=$minion_id
+  done
 
+  # Add routes to minions
+  for (( i=0; i<${#MINION_NAMES[@]}; i++)); do
     # We are not able to add a route to the instance until that instance is in "running" state.
     # This is quite an ugly solution to this problem. In Bash 4 we could use assoc. arrays to do this for
     # all instances at once but we can't be sure we are running Bash 4.
-    wait-for-instance-running $minion_id
+    wait-for-instance-running $MINION_IDS[$i]
     echo "Minion ${MINION_NAMES[$i]} running"
     sleep 10
-    $AWS_CMD create-route --route-table-id $ROUTE_TABLE_ID --destination-cidr-block ${MINION_IP_RANGES[$i]} --instance-id $minion_id > $LOG
+    $AWS_CMD modify-instance-attribute --instance-id $minion_id --source-dest-check '{"Value": false}' > $LOG
+    $AWS_CMD create-route --route-table-id $ROUTE_TABLE_ID --destination-cidr-block ${MINION_IP_RANGES[$i]} --instance-id $MINION_IDS[$i] > $LOG
   done
 
   FAIL=0
