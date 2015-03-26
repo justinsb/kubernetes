@@ -59,21 +59,21 @@ func TestNewAWSCloud(t *testing.T) {
 		return aws.Auth{"", "", ""}, nil
 	}
 
-	_, err1 := newAWSCloud(nil, fakeAuthFunc)
+	_, err1 := newAWSCloud(nil, fakeAuthFunc, "fake_instance_id")
 	if err1 == nil {
 		t.Errorf("Should error when no config reader is given")
 	}
 
 	_, err2 := newAWSCloud(strings.NewReader(
 		"[global]\nregion = blahonga"),
-		fakeAuthFunc)
+		fakeAuthFunc, "fake_instance_id")
 	if err2 == nil {
 		t.Errorf("Should error when config specifies invalid region")
 	}
 
 	_, err3 := newAWSCloud(
 		strings.NewReader("[global]\nregion = eu-west-1"),
-		fakeAuthFunc)
+		fakeAuthFunc, "fake_instance_id")
 	if err3 != nil {
 		t.Errorf("Should succeed when a valid region is specified: %s", err3)
 	}
@@ -141,6 +141,26 @@ func (ec2 *FakeEC2) AuthorizeSecurityGroupIngress(securityGroupId string, perms 
 }
 
 func (ec2 *FakeEC2) ListVpcs(filterName string) ([]ec2.VPC, error) {
+	panic("Not implemented")
+}
+
+func (ec2 *FakeEC2) AttachVolume(volumeId string, instanceId string, mountDevice string) (resp *ec2.AttachVolumeResp, err error) {
+	panic("Not implemented")
+}
+
+func (ec2 *FakeEC2) DetachVolume(volumeId string) (resp *ec2.SimpleResp, err error) {
+	panic("Not implemented")
+}
+
+func (ec2 *FakeEC2) Volumes(volumeIds []string, filter *ec2.Filter) (resp *ec2.VolumesResp, err error) {
+	panic("Not implemented")
+}
+
+func (ec2 *FakeEC2) CreateVolume(request *ec2.CreateVolume) (resp *ec2.CreateVolumeResp, err error) {
+	panic("Not implemented")
+}
+
+func (ec2 *FakeEC2) DeleteVolume(volumeId string) (resp *ec2.SimpleResp, err error) {
 	panic("Not implemented")
 }
 

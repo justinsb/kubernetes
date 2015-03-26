@@ -456,7 +456,7 @@ func (s *goamzEC2) DeleteVolume(volumeId string) (resp *ec2.SimpleResp, err erro
 
 func init() {
 	cloudprovider.RegisterCloudProvider("aws", func(config io.Reader) (cloudprovider.Interface, error) {
-		return newAWSCloud(config, getAuth)
+		return newAWSCloud(config, getAuth, "")
 	})
 }
 
@@ -484,7 +484,8 @@ func readAWSCloudConfig(config io.Reader) (*AWSCloudConfig, error) {
 }
 
 // newAWSCloud creates a new instance of AWSCloud.
-func newAWSCloud(config io.Reader, authFunc AuthFunc) (*AWSCloud, error) {
+// authFunc and instanceId are mostly for tests
+func newAWSCloud(config io.Reader, authFunc AuthFunc, instanceId string) (*AWSCloud, error) {
 	cfg, err := readAWSCloudConfig(config)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read AWS cloud provider config file: %v", err)
@@ -506,9 +507,12 @@ func newAWSCloud(config io.Reader, authFunc AuthFunc) (*AWSCloud, error) {
 		return nil, err
 	}
 
-	instanceId, err := ec2.GetMetaData("instance-id")
-	if err != nil {
-		return nil, fmt.Errorf("error fetching instance-id from ec2 metadata service: %v", err)
+	if instanceId == "" {
+		instanceIdBytes, err := ec2.GetMetaData("instance-id")
+		if err != nil {
+			return nil, fmt.Errorf("error fetching instance-id from ec2 metadata service: %v", err)
+		}
+		instanceId = string(instanceIdBytes)
 	}
 
 	awsCloud := &AWSCloud{
@@ -517,7 +521,7 @@ func newAWSCloud(config io.Reader, authFunc AuthFunc) (*AWSCloud, error) {
 		region: region,
 	}
 
-	awsCloud.selfAwsInstance = newAwsInstance(ec2, string(instanceId))
+	awsCloud.selfAwsInstance = newAwsInstance(ec2, instanceId)
 
 	return awsCloud, nil
 }
