@@ -66,7 +66,9 @@ function expect_instance_states {
 function get_instance_public_ip {
   local tagName=$1
   $AWS_CMD --output text describe-instances \
-    --filters Name=tag:Name,Values=${tagName} Name=instance-state-name,Values=running \
+    --filters Name=tag:Name,Values=${tagName} \
+              Name=instance-state-name,Values=running \
+              Name=tag:KubernetesCluster,Values=${CLUSTER_ID} \
     --query Reservations[].Instances[].NetworkInterfaces[0].Association.PublicIp
 }
 
