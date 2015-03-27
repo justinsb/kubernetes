@@ -42,9 +42,10 @@ type serviceInfo struct {
 	socket     proxySocket
 	timeout    time.Duration
 	// TODO: make this an net.IP address
-	publicIP            []string
-	sessionAffinityType api.AffinityType
-	stickyMaxAgeMinutes int
+	publicIP             []string
+	sessionAffinityType  api.AffinityType
+	stickyMaxAgeMinutes  int
+	externalLoadBalancer bool
 }
 
 // How long we wait for a connection to a backend in seconds
@@ -315,16 +316,19 @@ type Proxier struct {
 // NewProxier returns a new Proxier given a LoadBalancer and an address on
 // which to listen.  Because of the iptables logic, It is assumed that there
 // is only a single Proxier active on a machine.
-func NewProxier(loadBalancer LoadBalancer, listenIP net.IP, iptables iptables.Interface) *Proxier {
+func NewProxier(loadBalancer LoadBalancer, listenIP net.IP, iptables iptables.Interface, hostIP net.IP) *Proxier {
 	if listenIP.Equal(localhostIPv4) || listenIP.Equal(localhostIPv6) {
 		glog.Errorf("Can't proxy only on localhost - iptables can't do it")
 		return nil
 	}
 
-	hostIP, err := util.ChooseHostInterface()
-	if err != nil {
-		glog.Errorf("Failed to select a host interface: %v", err)
-		return nil
+	if hostIP == nil {
+		var err error
+		hostIP, err = util.ChooseHostInterface()
+		if err != nil {
+			glog.Errorf("Failed to select a host interface: %v", err)
+			return nil
+		}
 	}
 	glog.Infof("Setting Proxy IP to %v", hostIP)
 	return CreateProxier(loadBalancer, listenIP, iptables, hostIP)
@@ -479,10 +483,12 @@ func (proxier *Proxier) OnUpdate(services []api.Service) {
 		info, exists := proxier.getServiceInfo(serviceName)
 		serviceIP := net.ParseIP(service.Spec.PortalIP)
 		// TODO: check health of the socket?  What if ProxyLoop exited?
-		if exists && info.portalPort == service.Spec.Port && info.portalIP.Equal(serviceIP) {
+
+		// TODO: These two if statements are suspicious.  Issue 6061
+		if exists && info.portalPort == service.Spec.Port && info.portalIP.Equal(serviceIP) && info.externalLoadBalancer == service.Spec.CreateExternalLoadBalancer {
 			continue
 		}
-		if exists && (info.portalPort != service.Spec.Port || !info.portalIP.Equal(serviceIP) || !ipsEqual(service.Spec.PublicIPs, info.publicIP)) {
+		if exists && (info.portalPort != service.Spec.Port || info.externalLoadBalancer != service.Spec.CreateExternalLoadBalancer || !info.portalIP.Equal(serviceIP) || !ipsEqual(service.Spec.PublicIPs, info.publicIP)) {
 			glog.V(4).Infof("Something changed for service %q: stopping it", serviceName.String())
 			err := proxier.closePortal(serviceName, info)
 			if err != nil {
@@ -502,6 +508,7 @@ func (proxier *Proxier) OnUpdate(services []api.Service) {
 		info.portalIP = serviceIP
 		info.portalPort = service.Spec.Port
 		info.publicIP = service.Spec.PublicIPs
+		info.externalLoadBalancer = service.Spec.CreateExternalLoadBalancer
 		info.sessionAffinityType = service.Spec.SessionAffinity
 		// TODO: paramaterize this in the types api file as an attribute of sticky session.   For now it's hardcoded to 3 hours.
 		info.stickyMaxAgeMinutes = 180
@@ -554,6 +561,15 @@ func (proxier *Proxier) openPortal(service types.NamespacedName, info *serviceIn
 			return err
 		}
 	}
+	// We have an external load balancer, but no specific IPs;
+	// this indicates that the load balancer is acting as TCP relay, targeting the machine's IP
+	if info.externalLoadBalancer && len(info.publicIP) == 0 {
+		err = proxier.openOnePortal(proxier.hostIP, info.portalPort, info.protocol, proxier.listenIP, info.proxyPort, service)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
