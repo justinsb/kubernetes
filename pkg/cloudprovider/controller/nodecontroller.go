@@ -232,6 +232,7 @@ func (nc *NodeController) SyncCloudNodes() error {
 				continue
 			}
 			node.Status.Addresses = nodeList.Items[0].Status.Addresses
+			glog.Infof("Creating new node: %v", node)
 
 			glog.Infof("Create node in registry: %s", node.Name)
 			_, err = nc.kubeClient.Nodes().Create(&node)
