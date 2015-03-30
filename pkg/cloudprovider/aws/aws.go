@@ -47,9 +47,6 @@ type EC2 interface {
 	// Query EC2 for instances matching the filter
 	Instances(instIds []string, filter *ec2InstanceFilter) (resp *ec2.InstancesResp, err error)
 
-	// Query the EC2 metadata service (used to discover instance-id etc)
-	GetMetaData(key string) ([]byte, error)
-
 	// TODO: It is weird that these take a region.  I suspect it won't work cross-region anwyay.
 	// TODO: Refactor to use a load balancer object?
 	// List load balancers
@@ -77,6 +74,12 @@ type EC2 interface {
 	ListVpcs(filterName string) ([]ec2.VPC, error)
 }
 
+// Abstraction over the AWS metadata service
+type AWSMetadata interface {
+	// Query the EC2 metadata service (used to discover instance-id etc)
+	GetMetaData(key string) ([]byte, error)
+}
+
 // AWSCloud is an implementation of Interface, TCPLoadBalancer and Instances for Amazon Web Services.
 type AWSCloud struct {
 	ec2              EC2
@@ -88,7 +91,7 @@ type AWSCloud struct {
 type AWSCloudConfig struct {
 	Global struct {
 		// TODO: Is there any use for this?  We can get it from the instance metadata service
-		Region string
+		Zone string
 	}
 }
 
@@ -176,7 +179,11 @@ func (self *goamzEC2) Instances(instanceIds []string, filter *ec2InstanceFilter)
 	return self.ec2.Instances(instanceIds, goamzFilter)
 }
 
-func (self *goamzEC2) GetMetaData(key string) ([]byte, error) {
+type goamzMetadata struct {
+}
+
+// Implements AWSMetadata.GetMetaData
+func (self *goamzMetadata) GetMetaData(key string) ([]byte, error) {
 	v, err := aws.GetMetaData(key)
 	if err != nil {
 		return nil, fmt.Errorf("Error querying AWS metadata for key %s: %v", key, err)
@@ -399,7 +406,8 @@ type AuthFunc func() (auth aws.Auth, err error)
 
 func init() {
 	cloudprovider.RegisterCloudProvider("aws", func(config io.Reader) (cloudprovider.Interface, error) {
-		return newAWSCloud(config, getAuth)
+		metadata := &goamzMetadata{}
+		return newAWSCloud(config, getAuth, metadata)
 	})
 }
 
@@ -408,7 +416,7 @@ func getAuth() (auth aws.Auth, err error) {
 }
 
 // readAWSCloudConfig reads an instance of AWSCloudConfig from config reader.
-func readAWSCloudConfig(config io.Reader) (*AWSCloudConfig, error) {
+func readAWSCloudConfig(config io.Reader, metadata AWSMetadata) (*AWSCloudConfig, error) {
 	if config == nil {
 		return nil, fmt.Errorf("no AWS cloud provider config file given")
 	}
@@ -419,16 +427,36 @@ func readAWSCloudConfig(config io.Reader) (*AWSCloudConfig, error) {
 		return nil, err
 	}
 
-	if cfg.Global.Region == "" {
-		return nil, fmt.Errorf("no region specified in configuration file")
+	if cfg.Global.Zone == "" {
+		if metadata != nil {
+			glog.Info("Zone not specified in configuration file; querying AWS metadata service")
+			cfg.Global.Zone, err = getAvailabilityZone(metadata)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if cfg.Global.Zone == "" {
+			return nil, fmt.Errorf("no zone specified in configuration file")
+		}
 	}
 
 	return &cfg, nil
 }
 
+func getAvailabilityZone(metadata AWSMetadata) (string, error) {
+	availabilityZoneBytes, err := metadata.GetMetaData("placement/availability-zone")
+	if err != nil {
+		return "", err
+	}
+	if availabilityZoneBytes == nil || len(availabilityZoneBytes) == 0 {
+		return "", fmt.Errorf("Unable to determine availability-zone from instance metadata")
+	}
+	return string(availabilityZoneBytes), nil
+}
+
 // newAWSCloud creates a new instance of AWSCloud.
-func newAWSCloud(config io.Reader, authFunc AuthFunc) (*AWSCloud, error) {
-	cfg, err := readAWSCloudConfig(config)
+func newAWSCloud(config io.Reader, authFunc AuthFunc, metadata AWSMetadata) (*AWSCloud, error) {
+	cfg, err := readAWSCloudConfig(config, metadata)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read AWS cloud provider config file: %v", err)
 	}
@@ -438,13 +466,18 @@ func newAWSCloud(config io.Reader, authFunc AuthFunc) (*AWSCloud, error) {
 		return nil, err
 	}
 
-	// TODO: We can get the region very easily from the instance-metadata service
-	region, ok := aws.Regions[cfg.Global.Region]
+	zone := cfg.Global.Zone
+	if len(zone) <= 1 {
+		return nil, fmt.Errorf("invalid AWS zone in config file: %s", zone)
+	}
+	regionName := zone[:len(zone)-1]
+
+	region, ok := aws.Regions[regionName]
 	if !ok {
-		return nil, fmt.Errorf("not a valid AWS region: %s", cfg.Global.Region)
+		return nil, fmt.Errorf("not a valid AWS zone (unknown region): %s", zone)
 	}
 
-	ec2, err := newGoamzEC2(auth, cfg.Global.Region)
+	ec2, err := newGoamzEC2(auth, regionName)
 	if err != nil {
 		return nil, err
 	}
@@ -452,25 +485,9 @@ func newAWSCloud(config io.Reader, authFunc AuthFunc) (*AWSCloud, error) {
 	return &AWSCloud{
 		ec2:    ec2,
 		cfg:    cfg,
-		region: region,
+		region:           region,
+		availabilityZone: zone,
 	}, nil
-}
-
-func (self *AWSCloud) getAvailabilityZone() (string, error) {
-	// TODO: Do we need sync.Mutex here?
-	availabilityZone := self.availabilityZone
-	if self.availabilityZone == "" {
-		availabilityZoneBytes, err := self.ec2.GetMetaData("placement/availability-zone")
-		if err != nil {
-			return "", err
-		}
-		if availabilityZoneBytes == nil || len(availabilityZoneBytes) == 0 {
-			return "", fmt.Errorf("Unable to determine availability-zone from instance metadata")
-		}
-		availabilityZone = string(availabilityZoneBytes)
-		self.availabilityZone = availabilityZone
-	}
-	return availabilityZone, nil
 }
 
 func (aws *AWSCloud) Clusters() (cloudprovider.Clusters, bool) {
@@ -786,12 +803,12 @@ func getResourcesByInstanceType(instanceType string) (*api.NodeResources, error)
 
 // GetZone implements Zones.GetZone
 func (self *AWSCloud) GetZone() (cloudprovider.Zone, error) {
-	availabilityZone, err := self.getAvailabilityZone()
-	if err != nil {
-		return cloudprovider.Zone{}, err
+	if self.availabilityZone == "" {
+		// Should be unreachable
+		panic("availabilityZone not set")
 	}
 	return cloudprovider.Zone{
-		FailureDomain: availabilityZone,
+		FailureDomain: self.availabilityZone,
 		Region:        self.region.Name,
 	}, nil
 }
