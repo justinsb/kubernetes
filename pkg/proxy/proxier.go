@@ -555,15 +555,27 @@ func (proxier *Proxier) openPortal(service types.NamespacedName, info *serviceIn
 	if err != nil {
 		return err
 	}
+
+	publicIpCount := 0
 	for _, publicIP := range info.publicIP {
-		err = proxier.openOnePortal(net.ParseIP(publicIP), info.portalPort, info.protocol, proxier.listenIP, info.proxyPort, service)
+		ip := net.ParseIP(publicIP)
+		if ip == nil {
+			glog.V(2).Info("Skipping non-address public endpoint: %s", publicIP)
+			continue
+		}
+		publicIpCount++
+		err = proxier.openOnePortal(ip, info.portalPort, info.protocol, proxier.listenIP, info.proxyPort, service)
 		if err != nil {
 			return err
 		}
 	}
-	// We have an external load balancer, but no specific IPs;
-	// this indicates that the load balancer is acting as TCP relay, targeting the machine's IP
-	if info.externalLoadBalancer && len(info.publicIP) == 0 {
+
+	// We have an external load balancer, but no specific IPs.
+	// This indicates that the load balancer is acting as TCP relay, targeting the machine's IP.
+	// We also treat DNS names the same way, because DNS names are used when we have multiple
+	// addresses for the external load balancer (e.g. AWS ELB)
+	if info.externalLoadBalancer && publicIpCount== 0 {
+		glog.V(2).Info("Forwarding node public ip for service:", service.Name)
 		err = proxier.openOnePortal(proxier.hostIP, info.portalPort, info.protocol, proxier.listenIP, info.proxyPort, service)
 		if err != nil {
 			return err
