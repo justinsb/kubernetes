@@ -483,8 +483,8 @@ func newAWSCloud(config io.Reader, authFunc AuthFunc, metadata AWSMetadata) (*AW
 	}
 
 	return &AWSCloud{
-		ec2:    ec2,
-		cfg:    cfg,
+		ec2:              ec2,
+		cfg:              cfg,
 		region:           region,
 		availabilityZone: zone,
 	}, nil
