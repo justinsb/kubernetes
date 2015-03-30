@@ -226,7 +226,7 @@ func (nc *NodeController) SyncCloudNodes() error {
 			glog.Infof("Querying addresses for new node: %s", node.Name)
 			nodeList := &api.NodeList{}
 			nodeList.Items = []api.Node{node}
-			_, err = nc.PopulateAddresses(nodes)
+			_, err = nc.PopulateAddresses(nodeList)
 			if err != nil {
 				glog.Errorf("Error fetching addresses for node %s: %v", node.Name, err)
 				continue
