@@ -110,17 +110,17 @@ type AWSMetadata interface {
 	DeleteLoadBalancer(region string, name string) error
 
 	// List subnets
-	DescribeSubnets(subnetIds []string, filterVpcId string) ([]ec2.Subnet, error)
+	DescribeSubnets(subnetIds []string, filterVPCId string) ([]ec2.Subnet, error)
 
 	// List security groups
-	DescribeSecurityGroups(groupIds []string, filterName string, filterVpcId string) ([]ec2.SecurityGroupInfo, error)
+	DescribeSecurityGroups(groupIds []string, filterName string, filterVPCId string) ([]ec2.SecurityGroupInfo, error)
 	// Create security group and return the id
 	CreateSecurityGroup(vpcId string, name string, description string) (string, error)
 	// Authorize security group ingress
 	AuthorizeSecurityGroupIngress(securityGroupId string, perms []ec2.IPPerm) (resp *ec2.SimpleResp, err error)
 
 	// List VPCs
-	ListVpcs(filterName string) ([]ec2.VPC, error)
+	ListVPCs(filterName string) ([]ec2.VPC, error)
 }
 
 type VolumeOptions struct {
