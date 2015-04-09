@@ -41,8 +41,8 @@ var _ = PDescribe("Monitoring", func() {
 	})
 
 	It("verify monitoring pods and all cluster nodes are available on influxdb using heapster.", func() {
-		if testContext.Provider != "gce" {
-			By(fmt.Sprintf("Skipping Monitoring test, which is only supported for provider gce (not %s)",
+		if testContext.Provider != "gce" && testContext.Provider != "aws" {
+			By(fmt.Sprintf("Skipping Monitoring test, which is only supported for providers gce & aws (not %s)",
 				testContext.Provider))
 			return
 		}
