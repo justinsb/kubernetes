@@ -97,12 +97,6 @@ type AWSMetadata interface {
 	GetMetaData(key string) ([]byte, error)
 }
 
-// Abstraction over the AWS metadata service
-type AWSMetadata interface {
-	// Query the EC2 metadata service (used to discover instance-id etc)
-	GetMetaData(key string) ([]byte, error)
-}
-
 type VolumeOptions struct {
 	CapacityMB int
 }
