@@ -767,6 +767,9 @@ function kube-down {
 
     $AWS_CMD delete-vpc --vpc-id $vpc_id > $LOG
   fi
+
+  export CONTEXT="${INSTANCE_PREFIX}"
+  clear-kubeconfig
 }
 
 # Update a kubernetes cluster with latest source
