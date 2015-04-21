@@ -706,7 +706,7 @@ func iptablesInit(ipt iptables.Interface) error {
 	if _, err := ipt.EnsureChain(iptables.TableNAT, iptablesExportChain); err != nil {
 		return err
 	}
-	if _, err := ipt.EnsureRule(iptables.TableNAT, iptables.ChainInput, "-j", string(iptablesExportChain)); err != nil {
+	if _, err := ipt.EnsureRule(iptables.TableNAT, iptables.ChainPrerouting, "-j", string(iptablesExportChain)); err != nil {
 		return err
 	}
 	return nil

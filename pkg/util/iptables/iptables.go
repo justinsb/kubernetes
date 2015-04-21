@@ -63,7 +63,6 @@ const (
 	ChainPostrouting Chain = "POSTROUTING"
 	ChainPrerouting  Chain = "PREROUTING"
 	ChainOutput      Chain = "OUTPUT"
-	ChainInput       Chain = "INPUT"
 )
 
 // runner implements Interface in terms of exec("iptables").
