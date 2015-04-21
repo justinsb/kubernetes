@@ -31,6 +31,15 @@ grains:
   cloud: aws
 EOF
 
+if [[ -n "${HOSTNAME_OVERRIDE}" ]]; then
+  HOSTNAME_OVERRIDE=`curl --silent curl http://169.254.169.254/1.0/meta-data/instance-id`
+fi
+
+if [[ -n "${HOSTNAME_OVERRIDE}" ]]; then
+  cat <<EOF >/etc/salt/minion.d/grains.conf
+  hostname_override: "${HOSTNAME_OVERRIDE}"
+EOF
+fi
 
 if [[ -n "${DOCKER_OPTS}" ]]; then
   cat <<EOF >>/etc/salt/minion.d/grains.conf

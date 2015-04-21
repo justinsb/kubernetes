@@ -275,7 +275,7 @@ func (aws *AWSCloud) Zones() (cloudprovider.Zones, bool) {
 
 // NodeAddresses is an implementation of Instances.NodeAddresses.
 func (aws *AWSCloud) NodeAddresses(name string) ([]api.NodeAddress, error) {
-	instance, err := aws.getInstancesByDnsName(name)
+	instance, err := aws.getInstanceByName(name)
 	if err != nil {
 		return nil, err
 	}
@@ -309,19 +309,18 @@ func (aws *AWSCloud) NodeAddresses(name string) ([]api.NodeAddress, error) {
 
 // ExternalID returns the cloud provider ID of the specified instance.
 func (aws *AWSCloud) ExternalID(name string) (string, error) {
-	inst, err := aws.getInstancesByDnsName(name)
+	inst, err := aws.getInstanceByName(name)
 	if err != nil {
 		return "", err
 	}
 	return inst.InstanceId, nil
 }
 
-// Return the instances matching the relevant private dns name.
-func (aws *AWSCloud) getInstancesByDnsName(name string) (*ec2.Instance, error) {
-	f := &ec2InstanceFilter{}
-	f.PrivateDNSName = name
+// Return the instances matching the name, which is the instance id.
+func (aws *AWSCloud) getInstanceByName(name string) (*ec2.Instance, error) {
+	instanceIds := []string{name}
 
-	resp, err := aws.ec2.Instances(nil, f)
+	resp, err := aws.ec2.Instances(instanceIds, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +333,7 @@ func (aws *AWSCloud) getInstancesByDnsName(name string) (*ec2.Instance, error) {
 				continue
 			}
 
-			if instance.PrivateDNSName != name {
+			if instance.InstanceId != name {
 				// TODO: Should we warn here? - the filter should have caught this
 				// (this will happen in the tests if they don't fully mock the EC2 API)
 				continue
@@ -390,6 +389,11 @@ func (aws *AWSCloud) getInstancesByRegex(regex string) ([]string, error) {
 	instances := []string{}
 	for _, reservation := range resp.Reservations {
 		for _, instance := range reservation.Instances {
+			if instance.InstanceId == "" {
+				glog.Warning("skipping EC2 instance (no InstanceId)")
+				continue
+			}
+
 			// TODO: Push filtering down into EC2 API filter?
 			if !isAlive(&instance) {
 				glog.V(2).Infof("skipping EC2 instance (%s): %s",
@@ -403,15 +407,10 @@ func (aws *AWSCloud) getInstancesByRegex(regex string) ([]string, error) {
 				glog.V(2).Infof("skipping EC2 instance (pending): %s", instance.InstanceId)
 				continue
 			}
-			if instance.PrivateDNSName == "" {
-				glog.V(2).Infof("skipping EC2 instance (no PrivateDNSName): %s",
-					instance.InstanceId)
-				continue
-			}
 
 			for _, tag := range instance.Tags {
 				if tag.Key == "Name" && re.MatchString(tag.Value) {
-					instances = append(instances, instance.PrivateDNSName)
+					instances = append(instances, instance.InstanceId)
 					break
 				}
 			}
@@ -429,7 +428,7 @@ func (aws *AWSCloud) List(filter string) ([]string, error) {
 
 // GetNodeResources implements Instances.GetNodeResources
 func (aws *AWSCloud) GetNodeResources(name string) (*api.NodeResources, error) {
-	instance, err := aws.getInstancesByDnsName(name)
+	instance, err := aws.getInstanceByName(name)
 	if err != nil {
 		return nil, err
 	}
@@ -873,7 +872,7 @@ func (aws *AWSCloud) AttachDisk(instanceName string, diskName string, readOnly b
 			return "", fmt.Errorf("Error getting self-instance: %v", err)
 		}
 	} else {
-		instance, err := aws.getInstancesByDnsName(instanceName)
+		instance, err := aws.getInstanceByName(instanceName)
 		if err != nil {
 			return "", fmt.Errorf("Error finding instance: %v", err)
 		}
