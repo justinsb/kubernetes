@@ -51,6 +51,7 @@ func GetLoadBalancerName(service *api.Service) string {
 	ret = strings.Replace(ret, "-", "", -1)
 	//AWS requires that the name of a load balancer is shorter than 32 bytes.
 	if len(ret) > 32 {
+		// TODO(justinsb): convert to base 32 instead of truncation?
 		ret = ret[:32]
 	}
 	return ret

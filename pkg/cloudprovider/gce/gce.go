@@ -357,6 +357,7 @@ func (gce *GCECloud) CreateTCPLoadBalancer(name, region string, externalIP net.I
 
 	status := &api.LoadBalancerStatus{}
 	status.Ingress = []api.LoadBalancerIngress{{IP: fwd.IPAddress}}
+
 	return status, nil
 }
 

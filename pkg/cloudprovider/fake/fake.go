@@ -98,7 +98,6 @@ func (f *FakeCloud) Zones() (cloudprovider.Zones, bool) {
 func (f *FakeCloud) GetTCPLoadBalancer(name, region string) (*api.LoadBalancerStatus, bool, error) {
 	status := &api.LoadBalancerStatus{}
 	status.Ingress = []api.LoadBalancerIngress{{IP: f.ExternalIP.String()}}
-
 	return status, f.Exists, f.Err
 }
 
