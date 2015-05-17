@@ -49,6 +49,13 @@ const LOADBALANCER_NAME_MAXLEN = 32 // AWS limits load balancer names to 32 char
 // The tag name we use to differentiate multiple logically independent clusters running in the same AZ
 const TagNameKubernetesCluster = "KubernetesCluster"
 
+// Abstraction over AWS, to allow mocking/other implementations
+type AWSServices interface {
+	Compute(region string) (EC2, error)
+	LoadBalancing(region string) (ELB, error)
+	Metadata() AWSMetadata
+}
+
 // TODO: Should we rename this to AWS (EBS & ELB are not technically part of EC2)
 // Abstraction over EC2, to allow mocking/other implementations
 type EC2 interface {
@@ -114,8 +121,8 @@ type Volumes interface {
 
 // AWSCloud is an implementation of Interface, TCPLoadBalancer and Instances for Amazon Web Services.
 type AWSCloud struct {
+	awsServices      AWSServices
 	ec2              EC2
-	metadata         AWSMetadata
 	cfg              *AWSCloudConfig
 	availabilityZone string
 	region           string
@@ -125,8 +132,7 @@ type AWSCloud struct {
 	// The AWS instance that we are running on
 	selfAWSInstance *awsInstance
 
-	credentials *credentials.Credentials
-	mutex       sync.Mutex
+	mutex sync.Mutex
 	// Protects elbClients
 	elbClients map[string]ELB
 }
@@ -134,6 +140,7 @@ type AWSCloud struct {
 type AWSCloudConfig struct {
 	Global struct {
 		// TODO: Is there any use for this?  We can get it from the instance metadata service
+		// Maybe if we're not running on AWS, e.g. bootstrap; for now it is not very useful
 		Zone string
 
 		KubernetesClusterTag string
@@ -159,6 +166,32 @@ type awsSdkEC2 struct {
 	ec2 *ec2.EC2
 }
 
+type awsSDKProvider struct {
+	creds *credentials.Credentials
+}
+
+func (p *awsSDKProvider) Compute(regionName string) (EC2, error) {
+	ec2 := &awsSdkEC2{
+		ec2: ec2.New(&aws.Config{
+			Region:      regionName,
+			Credentials: p.creds,
+		}),
+	}
+	return ec2, nil
+}
+
+func (p *awsSDKProvider) LoadBalancing(regionName string) (ELB, error) {
+	elbClient := elb.New(&aws.Config{
+		Region:      regionName,
+		Credentials: p.creds,
+	})
+	return elbClient, nil
+}
+
+func (p *awsSDKProvider) Metadata() AWSMetadata {
+	return &awsSdkMetadata{}
+}
+
 // Builds an ELB client for the specified region
 func (s *AWSCloud) getELBClient(regionName string) (ELB, error) {
 	s.mutex.Lock()
@@ -166,10 +199,11 @@ func (s *AWSCloud) getELBClient(regionName string) (ELB, error) {
 
 	elbClient, found := s.elbClients[regionName]
 	if !found {
-		elbClient = elb.New(&aws.Config{
-			Region:      regionName,
-			Credentials: s.credentials,
-		})
+		var err error
+		elbClient, err = s.awsServices.LoadBalancing(regionName)
+		if err != nil {
+			return nil, err
+		}
 		s.elbClients[regionName] = elbClient
 	}
 	return elbClient, nil
@@ -263,8 +297,6 @@ func (self *awsSdkMetadata) GetMetaData(key string) ([]byte, error) {
 
 	return []byte(body), nil
 }
-
-type AuthFunc func() (creds *credentials.Credentials)
 
 // This is the code for if we want to use tags instead of relying on AWS names
 /*
@@ -444,14 +476,11 @@ func (s *awsSdkEC2) AuthorizeSecurityGroupIngress(request *ec2.AuthorizeSecurity
 
 func init() {
 	cloudprovider.RegisterCloudProvider("aws", func(config io.Reader) (cloudprovider.Interface, error) {
-		metadata := &awsSdkMetadata{}
-		return newAWSCloud(config, getAuth, metadata)
+		credsProvider := &credentials.EC2RoleProvider{}
+		creds := credentials.NewCredentials(credsProvider)
+		aws := &awsSDKProvider{creds: creds}
+		return newAWSCloud(config, aws)
 	})
-}
-
-func getAuth() (creds *credentials.Credentials) {
-	provider := &credentials.EC2RoleProvider{}
-	return credentials.NewCredentials(provider)
 }
 
 // readAWSCloudConfig reads an instance of AWSCloudConfig from config reader.
@@ -514,14 +543,13 @@ func isRegionValid(region string) bool {
 }
 
 // newAWSCloud creates a new instance of AWSCloud.
-// authFunc and instanceId are primarily for tests
-func newAWSCloud(config io.Reader, authFunc AuthFunc, metadata AWSMetadata) (*AWSCloud, error) {
+// AWSProvider and instanceId are primarily for tests
+func newAWSCloud(config io.Reader, awsServices AWSServices) (*AWSCloud, error) {
+	metadata := awsServices.Metadata()
 	cfg, err := readAWSCloudConfig(config, metadata)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read AWS cloud provider config file: %v", err)
 	}
-
-	creds := authFunc()
 
 	zone := cfg.Global.Zone
 	if len(zone) <= 1 {
@@ -534,20 +562,14 @@ func newAWSCloud(config io.Reader, authFunc AuthFunc, metadata AWSMetadata) (*AW
 		return nil, fmt.Errorf("not a valid AWS zone (unknown region): %s", zone)
 	}
 
-	ec2 := &awsSdkEC2{
-		ec2: ec2.New(&aws.Config{
-			Region:      regionName,
-			Credentials: creds,
-		}),
-	}
+	ec2, err := awsServices.Compute(regionName)
 
 	awsCloud := &AWSCloud{
+		awsServices:      awsServices,
 		ec2:              ec2,
 		cfg:              cfg,
 		region:           regionName,
 		availabilityZone: zone,
-		metadata:         metadata,
-		credentials:      creds,
 		elbClients:       map[string]ELB{},
 	}
 
@@ -569,6 +591,7 @@ func newAWSCloud(config io.Reader, authFunc AuthFunc, metadata AWSMetadata) (*AW
 			}
 		}
 	}
+
 	awsCloud.filterTags = filterTags
 	if len(filterTags) > 0 {
 		glog.Infof("AWS cloud filtering on tags: %v", filterTags)
@@ -1156,20 +1179,21 @@ func (self *awsDisk) delete() error {
 
 // Gets the awsInstance for the EC2 instance on which we are running
 // may return nil in case of error
-func (aws *AWSCloud) getSelfAWSInstance() (*awsInstance, error) {
+func (s *AWSCloud) getSelfAWSInstance() (*awsInstance, error) {
 	// Note that we cache some state in awsInstance (mountpoints), so we must preserve the instance
 
-	aws.mutex.Lock()
-	defer aws.mutex.Unlock()
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 
-	i := aws.selfAWSInstance
+	i := s.selfAWSInstance
 	if i == nil {
-		instanceIdBytes, err := aws.metadata.GetMetaData("instance-id")
+		metadata := s.awsServices.Metadata()
+		instanceIdBytes, err := metadata.GetMetaData("instance-id")
 		if err != nil {
 			return nil, fmt.Errorf("error fetching instance-id from ec2 metadata service: %v", err)
 		}
-		i = newAWSInstance(aws.ec2, string(instanceIdBytes))
-		aws.selfAWSInstance = i
+		i = newAWSInstance(s.ec2, string(instanceIdBytes))
+		s.selfAWSInstance = i
 	}
 
 	return i, nil
