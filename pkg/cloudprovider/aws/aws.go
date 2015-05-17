@@ -42,6 +42,14 @@ import (
 	"github.com/golang/glog"
 )
 
+const LOADBALANCER_NAME_PREFIX = "k8s-"
+const LOADBALANCER_TAG_NAME = "k8s:name"
+const LOADBALANCER_NAME_MAXLEN = 32 // AWS limits load balancer names to 32 characters
+
+// The tag name we use to differentiate multiple logically independent clusters running in the same AZ
+const TagNameKubernetesCluster = "KubernetesCluster"
+
+// TODO: Should we rename this to AWS (EBS & ELB are not technically part of EC2)
 // Abstraction over EC2, to allow mocking/other implementations
 type EC2 interface {
 	// Query EC2 for instances matching the filter
@@ -112,6 +120,8 @@ type AWSCloud struct {
 	availabilityZone string
 	region           string
 
+	filterTags map[string]string
+
 	// The AWS instance that we are running on
 	selfAWSInstance *awsInstance
 
@@ -125,6 +135,8 @@ type AWSCloudConfig struct {
 	Global struct {
 		// TODO: Is there any use for this?  We can get it from the instance metadata service
 		Zone string
+
+		KubernetesClusterTag string
 	}
 }
 
@@ -537,6 +549,31 @@ func newAWSCloud(config io.Reader, authFunc AuthFunc, metadata AWSMetadata) (*AW
 		metadata:         metadata,
 		credentials:      creds,
 		elbClients:       map[string]ELB{},
+	}
+
+	filterTags := map[string]string{}
+	if cfg.Global.KubernetesClusterTag != "" {
+		filterTags[TagNameKubernetesCluster] = cfg.Global.KubernetesClusterTag
+	} else {
+		selfInstance, err := awsCloud.getSelfAWSInstance()
+		if err != nil {
+			return nil, err
+		}
+		selfInstanceInfo, err := selfInstance.getInfo()
+		if err != nil {
+			return nil, err
+		}
+		for _, tag := range selfInstanceInfo.Tags {
+			if orEmpty(tag.Key) == TagNameKubernetesCluster {
+				filterTags[TagNameKubernetesCluster] = orEmpty(tag.Value)
+			}
+		}
+	}
+	awsCloud.filterTags = filterTags
+	if len(filterTags) > 0 {
+		glog.Infof("AWS cloud filtering on tags: %v", filterTags)
+	} else {
+		glog.Infof("AWS cloud - no tag filtering")
 	}
 
 	return awsCloud, nil
