@@ -164,9 +164,12 @@ func (s *AWSCloud) getELBClient(regionName string) (ELB, error) {
 }
 
 func stringPointerArray(orig []string) []*string {
+	if orig == nil {
+		return nil
+	}
 	n := make([]*string, len(orig))
-	for i, s := range orig {
-		n[i] = &s
+	for i := range orig {
+		n[i] = &orig[i]
 	}
 	return n
 }
@@ -208,7 +211,7 @@ func (self *awsSdkEC2) Instances(instanceIds []string, filter *ec2InstanceFilter
 			fetchedInstances = append(fetchedInstances, reservation.Instances...)
 		}
 
-		if *res.NextToken == "" {
+		if isNilOrEmpty(res.NextToken) {
 			break
 		}
 
