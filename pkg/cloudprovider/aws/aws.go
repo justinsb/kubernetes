@@ -240,13 +240,13 @@ func (self *awsSdkEC2) Instances(instanceIds []string, filter *ec2InstanceFilter
 	}
 
 	fetchedInstances := []*ec2.Instance{}
-	nextToken := ""
+	var nextToken *string
 
 	for {
 		res, err := self.ec2.DescribeInstances(&ec2.DescribeInstancesInput{
 			InstanceIDs: stringPointerArray(instanceIds),
 			Filters:     filters,
-			NextToken:   &nextToken,
+			NextToken:   nextToken,
 		})
 
 		if err != nil {
@@ -257,11 +257,10 @@ func (self *awsSdkEC2) Instances(instanceIds []string, filter *ec2InstanceFilter
 			fetchedInstances = append(fetchedInstances, reservation.Instances...)
 		}
 
-		if isNilOrEmpty(res.NextToken) {
+		nextToken = res.NextToken
+		if isNilOrEmpty(nextToken) {
 			break
 		}
-
-		nextToken = *res.NextToken
 	}
 
 	return fetchedInstances, nil
