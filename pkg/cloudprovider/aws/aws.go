@@ -1395,7 +1395,7 @@ func (self *AWSCloud) findVPC() (*ec2.VPC, error) {
 // Makes sure the security group allows ingress on the specified ports (with sourceIp & protocol)
 // Returns true iff changes were made
 // The security group must already exist
-func (s *AWSCloud) ensureSecurityGroupIngess(securityGroupId string, sourceIp string, protocol string, ports []int) (bool, error) {
+func (s *AWSCloud) ensureSecurityGroupIngess(securityGroupId string, sourceIp string, ports []*api.ServicePort) (bool, error) {
 	groups, err := s.ec2.DescribeSecurityGroups([]string{securityGroupId}, "", "")
 	if err != nil {
 		glog.Warning("error retrieving security group", err)
@@ -1416,7 +1416,8 @@ func (s *AWSCloud) ensureSecurityGroupIngess(securityGroupId string, sourceIp st
 
 	for _, port := range ports {
 		found := false
-		portInt64 := int64(port)
+		portInt64 := int64(port.Port)
+		protocol := strings.ToLower(string(port.Protocol))
 		for _, permission := range group.IPPermissions {
 			if permission.FromPort == nil || *permission.FromPort != portInt64 {
 				continue
@@ -1469,7 +1470,7 @@ func (s *AWSCloud) ensureSecurityGroupIngess(securityGroupId string, sourceIp st
 // TODO(justinsb): This must be idempotent
 // TODO(justinsb) It is weird that these take a region.  I suspect it won't work cross-region anwyay.
 // TODO(justinsb): Honor existingLoadBalancer
-func (s *AWSCloud) CreateTCPLoadBalancer(name, region string, existingLoadBalancer string, ports []int, hosts []string, affinity api.AffinityType) (api.LoadBalancerStatus, error) {
+func (s *AWSCloud) CreateTCPLoadBalancer(name, region string, existingLoadBalancer string, ports []*api.ServicePort, hosts []string, affinity api.AffinityType) (api.LoadBalancerStatus, error) {
 	glog.V(2).Infof("CreateTCPLoadBalancer(%v, %v, %v, %v, %v)", name, region, existingLoadBalancer, ports, hosts)
 
 	var status api.LoadBalancerStatus
@@ -1548,12 +1549,17 @@ func (s *AWSCloud) CreateTCPLoadBalancer(name, region string, existingLoadBalanc
 
 			listeners := []*elb.Listener{}
 			for _, port := range ports {
-				portInt64 := int64(port)
-				protocol := "tcp"
+				if port.NodePort == 0 {
+					glog.Errorf("Ignoring port without NodePort defined: %v", port)
+					continue
+				}
+				instancePort := int64(port.NodePort)
+				loadBalancerPort := int64(port.Port)
+				protocol := strings.ToLower(string(port.Protocol))
 
 				listener := &elb.Listener{}
-				listener.InstancePort = &portInt64
-				listener.LoadBalancerPort = &portInt64
+				listener.InstancePort = &instancePort
+				listener.LoadBalancerPort = &loadBalancerPort
 				listener.Protocol = &protocol
 				listener.InstanceProtocol = &protocol
 
@@ -1601,7 +1607,7 @@ func (s *AWSCloud) CreateTCPLoadBalancer(name, region string, existingLoadBalanc
 						return status, fmt.Errorf("created security group, but id was not returned")
 					}
 				}
-				_, err = s.ensureSecurityGroupIngess(*securityGroupId, "0.0.0.0/0", "tcp", ports)
+				_, err = s.ensureSecurityGroupIngess(*securityGroupId, "0.0.0.0/0", ports)
 				if err != nil {
 					return status, err
 				}
@@ -1633,11 +1639,11 @@ func (s *AWSCloud) CreateTCPLoadBalancer(name, region string, existingLoadBalanc
 	registerResponse, err := elbClient.RegisterInstancesWithLoadBalancer(registerRequest)
 	if err != nil {
 		// TODO: Is it better to delete the load balancer entirely?
-		glog.Warning("Error registering instances with load-balancer", name, err)
+		glog.Warningf("Error registering instances with load-balancer %s: %v", name, err)
 	}
 
-	glog.V(1).Info("Updated instances registered with load-balancer", name, registerResponse.Instances)
-	glog.V(1).Info("Loadbalancer %s has DNS name %s", name, dnsName)
+	glog.V(1).Infof("Updated instances registered with load-balancer %s: %v", name, registerResponse.Instances)
+	glog.V(1).Infof("Loadbalancer %s has DNS name %s", name, dnsName)
 
 	// TODO: Wait for creation?
 
