@@ -118,7 +118,7 @@ type AWSCloud struct {
 	credentials *credentials.Credentials
 	mutex       sync.Mutex
 	// Protects elbClients
-	elbClients map[string]*elb.ELB
+	elbClients map[string]ELB
 }
 
 type AWSCloudConfig struct {
@@ -532,8 +532,8 @@ func newAWSCloud(config io.Reader, authFunc AuthFunc, metadata AWSMetadata) (*AW
 		region:           regionName,
 		availabilityZone: zone,
 		metadata:         metadata,
-		credentials:      credentials,
-		elbClients:       map[string]*elb.ELB{},
+		credentials:      creds,
+		elbClients:       map[string]ELB{},
 	}
 
 	return awsCloud, nil
