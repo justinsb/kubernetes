@@ -475,8 +475,11 @@ func (s *awsSdkEC2) AuthorizeSecurityGroupIngress(request *ec2.AuthorizeSecurity
 
 func init() {
 	cloudprovider.RegisterCloudProvider("aws", func(config io.Reader) (cloudprovider.Interface, error) {
-		credsProvider := &credentials.EC2RoleProvider{}
-		creds := credentials.NewCredentials(credsProvider)
+		creds := credentials.NewChainCredentials(
+			[]credentials.Provider{
+				&credentials.EnvProvider{},
+				&credentials.EC2RoleProvider{},
+			})
 		aws := &awsSDKProvider{creds: creds}
 		return newAWSCloud(config, aws)
 	})
