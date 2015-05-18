@@ -27,6 +27,8 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/latest"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
@@ -521,6 +523,34 @@ func waitForPublicIPs(c *client.Client, serviceName, namespace string) (*api.Ser
 		Logf("Waiting for service %s in namespace %s to have an ingress point (%v)", serviceName, namespace, time.Since(start))
 	}
 	return service, fmt.Errorf("service %s in namespace %s doesn't have an ingress point after %.2f seconds", serviceName, namespace, timeout.Seconds())
+}
+
+func collectAddresses(nodes *api.NodeList, addressType api.NodeAddressType) []string {
+	ips := []string{}
+	for i := range nodes.Items {
+		item := &nodes.Items[i]
+		for j := range item.Status.Addresses {
+			nodeAddress := &item.Status.Addresses[j]
+			if nodeAddress.Type == addressType {
+				ips = append(ips, nodeAddress.Address)
+			}
+		}
+	}
+	return ips
+}
+
+func getMinionPublicIps(c *client.Client) ([]string, error) {
+	nodes, err := c.Nodes().List(labels.Everything(), fields.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	ips := collectAddresses(nodes, api.NodeExternalIP)
+	if len(ips) == 0 {
+		ips = collectAddresses(nodes, api.NodeLegacyHostIP)
+	}
+	return ips, nil
+>>>>>>> 5eb9c13... Fix e2e test node listing; pass valid selectors
 }
 
 func validateUniqueOrFail(s []string) {
