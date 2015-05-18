@@ -98,6 +98,7 @@ fi
   --gce-project="${PROJECT:-}" \
   --gce-zone="${ZONE:-}" \
   --kube-master="${KUBE_MASTER:-}" \
+  --cluster_tag="${CLUSTER_ID:-}" \
   --repo-root="${KUBE_VERSION_ROOT}" \
   --node-instance-group="${NODE_INSTANCE_GROUP:-}" \
   --num-nodes="${NUM_MINIONS:-}" \
