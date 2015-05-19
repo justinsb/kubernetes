@@ -812,6 +812,32 @@ func convert_api_ListOptions_To_v1_ListOptions(in *api.ListOptions, out *ListOpt
 	return nil
 }
 
+func convert_api_LoadBalancerIngress_To_v1_LoadBalancerIngress(in *api.LoadBalancerIngress, out *LoadBalancerIngress, s conversion.Scope) error {
+	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
+		defaulting.(func(*api.LoadBalancerIngress))(in)
+	}
+	out.IP = in.IP
+	out.Hostname = in.Hostname
+	return nil
+}
+
+func convert_api_LoadBalancerStatus_To_v1_LoadBalancerStatus(in *api.LoadBalancerStatus, out *LoadBalancerStatus, s conversion.Scope) error {
+	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
+		defaulting.(func(*api.LoadBalancerStatus))(in)
+	}
+	if in.Ingress != nil {
+		out.Ingress = make([]LoadBalancerIngress, len(in.Ingress))
+		for i := range in.Ingress {
+			if err := convert_api_LoadBalancerIngress_To_v1_LoadBalancerIngress(&in.Ingress[i], &out.Ingress[i], s); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Ingress = nil
+	}
+	return nil
+}
+
 func convert_api_LocalObjectReference_To_v1_LocalObjectReference(in *api.LocalObjectReference, out *LocalObjectReference, s conversion.Scope) error {
 	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
 		defaulting.(func(*api.LocalObjectReference))(in)
@@ -2071,7 +2097,7 @@ func convert_api_ServiceSpec_To_v1_ServiceSpec(in *api.ServiceSpec, out *Service
 		out.Selector = nil
 	}
 	out.PortalIP = in.PortalIP
-	out.CreateExternalLoadBalancer = in.CreateExternalLoadBalancer
+	out.Type = ServiceType(in.Type)
 	if in.PublicIPs != nil {
 		out.PublicIPs = make([]string, len(in.PublicIPs))
 		for i := range in.PublicIPs {
@@ -3050,15 +3076,6 @@ func convert_v1_LoadBalancerIngress_To_api_LoadBalancerIngress(in *LoadBalancerI
 	return nil
 }
 
-func convert_api_LoadBalancerIngress_To_v1_LoadBalancerIngress(in *api.LoadBalancerIngress, out *LoadBalancerIngress, s conversion.Scope) error {
-	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
-		defaulting.(func(*api.LoadBalancerIngress))(in)
-	}
-	out.IP = in.IP
-	out.Hostname = in.Hostname
-	return nil
-}
-
 func convert_v1_LoadBalancerStatus_To_api_LoadBalancerStatus(in *LoadBalancerStatus, out *api.LoadBalancerStatus, s conversion.Scope) error {
 	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
 		defaulting.(func(*LoadBalancerStatus))(in)
@@ -3067,23 +3084,6 @@ func convert_v1_LoadBalancerStatus_To_api_LoadBalancerStatus(in *LoadBalancerSta
 		out.Ingress = make([]api.LoadBalancerIngress, len(in.Ingress))
 		for i := range in.Ingress {
 			if err := convert_v1_LoadBalancerIngress_To_api_LoadBalancerIngress(&in.Ingress[i], &out.Ingress[i], s); err != nil {
-				return err
-			}
-		}
-	} else {
-		out.Ingress = nil
-	}
-	return nil
-}
-
-func convert_api_LoadBalancerStatus_To_v1_LoadBalancerStatus(in *api.LoadBalancerStatus, out *LoadBalancerStatus, s conversion.Scope) error {
-	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
-		defaulting.(func(*api.LoadBalancerStatus))(in)
-	}
-	if in.Ingress != nil {
-		out.Ingress = make([]LoadBalancerIngress, len(in.Ingress))
-		for i := range in.Ingress {
-			if err := convert_api_LoadBalancerIngress_To_v1_LoadBalancerIngress(&in.Ingress[i], &out.Ingress[i], s); err != nil {
 				return err
 			}
 		}
@@ -4352,7 +4352,7 @@ func convert_v1_ServiceSpec_To_api_ServiceSpec(in *ServiceSpec, out *api.Service
 		out.Selector = nil
 	}
 	out.PortalIP = in.PortalIP
-	out.CreateExternalLoadBalancer = in.CreateExternalLoadBalancer
+	out.Type = api.ServiceType(in.Type)
 	if in.PublicIPs != nil {
 		out.PublicIPs = make([]string, len(in.PublicIPs))
 		for i := range in.PublicIPs {
