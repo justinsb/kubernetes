@@ -475,7 +475,6 @@ func (lb *LoadBalancer) GetTCPLoadBalancer(name, region string) (*api.LoadBalanc
 	}
 
 	status := &api.LoadBalancerStatus{}
-	status.Name = vip.Address
 	status.Ingress = []api.LoadBalancerIngress{{IP: vip.Address}}
 
 	return status, true, err
@@ -573,7 +572,6 @@ func (lb *LoadBalancer) CreateTCPLoadBalancer(name, region string, externalIP ne
 	}
 
 	status := &api.LoadBalancerStatus{}
-	status.Name = vip.Address
 	status.Ingress = []api.LoadBalancerIngress{{IP: vip.Address}}
 
 	return status, nil
