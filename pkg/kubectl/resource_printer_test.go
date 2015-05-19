@@ -716,6 +716,11 @@ func TestPrintHumanReadableService(t *testing.T) {
 		{
 			Spec: api.ServiceSpec{
 				PortalIP: "1.2.3.4",
+				DeprecatedPublicIPs: []string{
+					"2.3.4.5",
+					"4.5.6.7",
+					"5.6.7.8",
+				},
 				Ports: []api.ServicePort{
 					{
 						Port:     80,
