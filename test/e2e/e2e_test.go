@@ -19,6 +19,7 @@ package e2e
 import (
 	"flag"
 	"fmt"
+	"os"
 	"path"
 	"strings"
 	"testing"
@@ -89,6 +90,8 @@ func init() {
 	flag.StringVar(&cloudConfig.Zone, "gce-zone", "", "GCE zone being used, if applicable")
 	flag.StringVar(&cloudConfig.NodeInstanceGroup, "node-instance-group", "", "Name of the managed instance group for nodes. Valid only for gce")
 	flag.IntVar(&cloudConfig.NumNodes, "num-nodes", -1, "Number of nodes in the cluster")
+
+	flag.StringVar(&cloudConfig.ClusterTag, "cluster-tag", "", "Tag used to identify resources.  Only required if provider is aws.")
 }
 
 func TestE2E(t *testing.T) {
@@ -107,6 +110,12 @@ func TestE2E(t *testing.T) {
 			glog.Fatal("gce-zone must be specified for AWS")
 		}
 		awsConfig += fmt.Sprintf("Zone=%s\n", cloudConfig.Zone)
+
+		if cloudConfig.ClusterTag == "" {
+			glog.Error("--cluster-tag must be specified for AWS")
+			os.Exit(1)
+		}
+		awsConfig += fmt.Sprintf("KubernetesClusterTag=%s\n", cloudConfig.ClusterTag)
 
 		var err error
 		cloudConfig.Provider, err = cloudprovider.GetCloudProvider(testContext.Provider, strings.NewReader(awsConfig))
