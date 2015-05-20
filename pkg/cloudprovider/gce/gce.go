@@ -312,9 +312,7 @@ func translateAffinityType(affinityType api.ServiceAffinity) GCEAffinityType {
 // CreateTCPLoadBalancer is an implementation of TCPLoadBalancer.CreateTCPLoadBalancer.
 // TODO(a-robinson): Don't just ignore specified IP addresses. Check if they're
 // owned by the project and available to be used, and use them if they are.
-func (gce *GCECloud) CreateTCPLoadBalancer(name, region string, forceLoadBalancer string, ports []*api.ServicePort, hosts []string, affinityType api.AffinityType) (api.LoadBalancerStatus, error) {
-	status := api.LoadBalancerStatus{}
-
+func (gce *GCECloud) CreateTCPLoadBalancer(name, region string, forceLoadBalancer string, ports []*api.ServicePort, hosts []string, affinityType api.ServiceAffinity) (*api.LoadBalancerStatus, error) {
 	err := gce.makeTargetPool(name, region, hosts, translateAffinityType(affinityType))
 	if err != nil {
 		if !isHTTPErrorCode(err, http.StatusConflict) {

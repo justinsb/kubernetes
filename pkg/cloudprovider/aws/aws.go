@@ -421,7 +421,6 @@ func (s *awsSdkEC2) DescribeSecurityGroups(securityGroupIds []string, filterName
 	return response.SecurityGroups, nil
 }
 
->>>>>>> aa6bab5... Support for AWS ELB
 func (s *awsSdkEC2) AttachVolume(volumeID, instanceId, device string) (resp *ec2.VolumeAttachment, err error) {
 
 	request := ec2.AttachVolumeInput{
@@ -1473,37 +1472,35 @@ func (s *AWSCloud) ensureSecurityGroupIngess(securityGroupId string, sourceIp st
 // TODO(justinsb): This must be idempotent
 // TODO(justinsb) It is weird that these take a region.  I suspect it won't work cross-region anwyay.
 // TODO(justinsb): Honor existingLoadBalancer
-func (s *AWSCloud) CreateTCPLoadBalancer(name, region string, existingLoadBalancer string, ports []*api.ServicePort, hosts []string, affinity api.AffinityType) (api.LoadBalancerStatus, error) {
+func (s *AWSCloud) CreateTCPLoadBalancer(name, region string, existingLoadBalancer string, ports []*api.ServicePort, hosts []string, affinity api.ServiceAffinity) (*api.LoadBalancerStatus, error) {
 	glog.V(2).Infof("CreateTCPLoadBalancer(%v, %v, %v, %v, %v)", name, region, existingLoadBalancer, ports, hosts)
-
-	var status api.LoadBalancerStatus
 
 	elbClient, err := s.getELBClient(region)
 	if err != nil {
-		return status, err
+		return nil, err
 	}
 
-	if affinity != api.AffinityTypeNone {
+	if affinity != api.ServiceAffinityNone {
 		// ELB supports sticky sessions, but only when configured for HTTP/HTTPS
-		return status, fmt.Errorf("unsupported load balancer affinity: %v", affinity)
+		return nil, fmt.Errorf("unsupported load balancer affinity: %v", affinity)
 	}
 
 	if len(existingLoadBalancer) > 0 {
-		return status, fmt.Errorf("LoadBalancer cannot be specified for AWS ELB")
+		return nil, fmt.Errorf("LoadBalancer cannot be specified for AWS ELB")
 	}
 
-	instances, err := s.getInstanceByDnsNames(hosts)
+	instances, err := s.getInstancesByDnsNames(hosts)
 	if err != nil {
-		return status, err
+		return nil, err
 	}
 
 	vpc, err := s.findVPC()
 	if err != nil {
 		glog.Error("error finding VPC", err)
-		return status, err
+		return nil, err
 	}
 	if vpc == nil {
-		return status, fmt.Errorf("Unable to find VPC")
+		return nil, fmt.Errorf("Unable to find VPC")
 	}
 
 	// Construct list of configured subnets
@@ -1517,7 +1514,7 @@ func (s *AWSCloud) CreateTCPLoadBalancer(name, region string, existingLoadBalanc
 		response, err := s.ec2.DescribeSubnets(request)
 		if err != nil {
 			glog.Error("error describing subnets: ", err)
-			return status, err
+			return nil, err
 		}
 
 		//	zones := []string{}
@@ -1525,7 +1522,7 @@ func (s *AWSCloud) CreateTCPLoadBalancer(name, region string, existingLoadBalanc
 			subnetIds = append(subnetIds, subnet.SubnetID)
 			if !strings.HasPrefix(orEmpty(subnet.AvailabilityZone), region) {
 				glog.Error("found AZ that did not match region", orEmpty(subnet.AvailabilityZone), " vs ", region)
-				return status, fmt.Errorf("invalid AZ for region")
+				return nil, fmt.Errorf("invalid AZ for region")
 			}
 			//		zones = append(zones, subnet.AvailabilityZone)
 		}
@@ -1536,19 +1533,12 @@ func (s *AWSCloud) CreateTCPLoadBalancer(name, region string, existingLoadBalanc
 	{
 		loadBalancer, err := s.describeLoadBalancer(region, name)
 		if err != nil {
-			return status, err
+			return nil, err
 		}
 
 		if loadBalancer == nil {
 			createRequest := &elb.CreateLoadBalancerInput{}
-			// TODO: Does k8s keep a UUID for the load balancer, which we could use instead of
-			// a random UUID?
-			uuid := strings.Replace(string(util.NewUUID()), "-", "", -1)
-			awsId := LOADBALANCER_NAME_PREFIX + uuid
-			if len(awsId) > LOADBALANCER_NAME_MAXLEN {
-				awsId = awsId[:LOADBALANCER_NAME_MAXLEN]
-			}
-			createRequest.LoadBalancerName = &awsId
+			createRequest.LoadBalancerName = aws.String(name)
 
 			listeners := []*elb.Listener{}
 			for _, port := range ports {
@@ -1584,7 +1574,7 @@ func (s *AWSCloud) CreateTCPLoadBalancer(name, region string, existingLoadBalanc
 				// TODO: Should we do something more reliable ?? .Where("tag:kubernetes-id", kubernetesId)
 				securityGroups, err := s.ec2.DescribeSecurityGroups(nil, sgName, orEmpty(vpc.VPCID))
 				if err != nil {
-					return status, err
+					return nil, err
 				}
 				var securityGroupId *string
 				for _, securityGroup := range securityGroups {
@@ -1602,17 +1592,17 @@ func (s *AWSCloud) CreateTCPLoadBalancer(name, region string, existingLoadBalanc
 					createSecurityGroupResponse, err := s.ec2.CreateSecurityGroup(createSecurityGroupRequest)
 					if err != nil {
 						glog.Error("error creating security group: ", err)
-						return status, err
+						return nil, err
 					}
 
 					securityGroupId = createSecurityGroupResponse.GroupID
 					if isNilOrEmpty(securityGroupId) {
-						return status, fmt.Errorf("created security group, but id was not returned")
+						return nil, fmt.Errorf("created security group, but id was not returned")
 					}
 				}
 				_, err = s.ensureSecurityGroupIngess(*securityGroupId, "0.0.0.0/0", ports)
 				if err != nil {
-					return status, err
+					return nil, err
 				}
 				createRequest.SecurityGroups = []*string{securityGroupId}
 			}
@@ -1620,7 +1610,7 @@ func (s *AWSCloud) CreateTCPLoadBalancer(name, region string, existingLoadBalanc
 			glog.Info("Creating load balancer with name: ", createRequest.LoadBalancerName)
 			createResponse, err := elbClient.CreateLoadBalancer(createRequest)
 			if err != nil {
-				return status, err
+				return nil, err
 			}
 			dnsName = createResponse.DNSName
 			loadBalancerName = createRequest.LoadBalancerName
@@ -1650,35 +1640,32 @@ func (s *AWSCloud) CreateTCPLoadBalancer(name, region string, existingLoadBalanc
 
 	// TODO: Wait for creation?
 
-	status = toStatus(loadBalancerName, dnsName)
+	status := toStatus(loadBalancerName, dnsName)
 	return status, nil
 }
 
 // GetTCPLoadBalancer is an implementation of TCPLoadBalancer.GetTCPLoadBalancer
-func (s *AWSCloud) GetTCPLoadBalancer(name, region string) (api.LoadBalancerStatus, bool, error) {
-	var status api.LoadBalancerStatus
-
+func (s *AWSCloud) GetTCPLoadBalancer(name, region string) (*api.LoadBalancerStatus, bool, error) {
 	lb, err := s.describeLoadBalancer(region, name)
 	if err != nil {
-		return status, false, err
+		return nil, false, err
 	}
 
 	if lb == nil {
-		return status, false, nil
+		return nil, false, nil
 	}
 
-	status = toStatus(lb.LoadBalancerName, lb.DNSName)
-
-	return status, true, err
+	status := toStatus(lb.LoadBalancerName, lb.DNSName)
+	return status, true, nil
 }
 
-func toStatus(loadBalancerName *string, dnsName *string) api.LoadBalancerStatus {
-	var status api.LoadBalancerStatus
+func toStatus(loadBalancerName *string, dnsName *string) *api.LoadBalancerStatus {
+	status := &api.LoadBalancerStatus{}
 
 	if !isNilOrEmpty(dnsName) {
 		var ingress api.LoadBalancerIngress
 		ingress.Hostname = *dnsName
-		status.Ingress = []api.LoadBalancerIngress { ingress }
+		status.Ingress = []api.LoadBalancerIngress{ingress}
 	}
 
 	return status
@@ -1784,4 +1771,20 @@ func (s *AWSCloud) UpdateTCPLoadBalancer(name, region string, hosts []string) er
 	}
 
 	return nil
+}
+
+// TODO: Make efficient
+func (a *AWSCloud) getInstancesByDnsNames(names []string) ([]*ec2.Instance, error) {
+	instances := []*ec2.Instance{}
+	for _, name := range names {
+		instance, err := a.getInstanceByDnsName(name)
+		if err != nil {
+			return nil, err
+		}
+		if instance == nil {
+			return nil, fmt.Errorf("unable to find instance " + name)
+		}
+		instances = append(instances, instance)
+	}
+	return instances, nil
 }

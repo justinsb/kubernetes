@@ -18,7 +18,6 @@ package servicecontroller
 
 import (
 	"fmt"
-	"net"
 	"sort"
 	"sync"
 	"time"
@@ -328,7 +327,7 @@ func (s *ServiceController) createExternalLoadBalancer(service *api.Service) err
 		for _, publicIP := range service.Spec.DeprecatedPublicIPs {
 			// TODO: Make this actually work for multiple IPs by using different
 			// names for each. For now, we'll just create the first and break.
-			status, err := s.balancer.CreateTCPLoadBalancer(name, s.zone.Region, net.ParseIP(publicIP),
+			status, err := s.balancer.CreateTCPLoadBalancer(name, s.zone.Region, publicIP,
 				ports, hostsFromNodeList(nodes), service.Spec.SessionAffinity)
 			if err != nil {
 				return err
@@ -338,7 +337,7 @@ func (s *ServiceController) createExternalLoadBalancer(service *api.Service) err
 			break
 		}
 	} else {
-		status, err := s.balancer.CreateTCPLoadBalancer(name, s.zone.Region, nil,
+		status, err := s.balancer.CreateTCPLoadBalancer(name, s.zone.Region, "",
 			ports, hostsFromNodeList(nodes), service.Spec.SessionAffinity)
 		if err != nil {
 			return err
