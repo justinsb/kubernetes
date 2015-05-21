@@ -477,7 +477,7 @@ var _ = Describe("Services", func() {
 		if port.NodePort != nodePort2 {
 			Failf("got unexpected Spec.Ports[0].nodePort for NodePort service: %v", service)
 		}
-		if len(service.Status.LoadBalancer.Ingress) != 0 {
+		if len(service.Status.LoadBalancer.Ingress) != 1 {
 			Failf("got unexpected len(Status.LoadBalancer.Ingresss) for NodePort service: %v", service)
 		}
 		By("hitting the pod through the service's updated NodePort")
