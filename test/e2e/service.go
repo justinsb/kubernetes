@@ -1060,7 +1060,7 @@ func (t *WebserverTest) CreateService(service *api.Service) (*api.Service, error
 // Delete a service, and remove it from the cleanup list
 func (t *WebserverTest) DeleteService(serviceName string) error {
 	err := t.Client.Services(t.Namespace).Delete(serviceName)
-	if err != nil {
+	if err == nil {
 		delete(t.services, serviceName)
 	}
 	return err
