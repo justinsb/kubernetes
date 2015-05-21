@@ -19,9 +19,12 @@ package e2e
 import (
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
@@ -33,6 +36,9 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
+
+// This should match whatever the default/configured range is
+var ServiceNodePortRange = util.PortRange{Base: 30000, Size: 2767}
 
 var _ = Describe("Services", func() {
 	var c *client.Client
@@ -260,25 +266,21 @@ var _ = Describe("Services", func() {
 
 		serviceName := "external-lb-test"
 		ns := namespaces[0]
-		labels := map[string]string{
-			"key0": "value0",
-		}
-		service := &api.Service{
-			ObjectMeta: api.ObjectMeta{
-				Name: serviceName,
-			},
-			Spec: api.ServiceSpec{
-				Selector: labels,
-				Ports: []api.ServicePort{{
-					Port:       80,
-					TargetPort: util.NewIntOrStringFromInt(80),
-				}},
-				Type: api.ServiceTypeLoadBalancer,
-			},
-		}
+
+		t := NewWebserverTest(c, ns, serviceName)
+		defer func() {
+			defer GinkgoRecover()
+			errs := t.Cleanup()
+			if len(errs) != 0 {
+				Failf("errors in cleanup: %v", errs)
+			}
+		}()
+
+		service := t.BuildServiceSpec()
+		service.Spec.Type = api.ServiceTypeLoadBalancer
 
 		By("creating service " + serviceName + " with external load balancer in namespace " + ns)
-		result, err := c.Services(ns).Create(service)
+		result, err := t.CreateService(service)
 		Expect(err).NotTo(HaveOccurred())
 		defer func(ns, serviceName string) { // clean up when we're done
 			By("deleting service " + serviceName + " in namespace " + ns)
@@ -294,85 +296,44 @@ var _ = Describe("Services", func() {
 			Failf("got unexpected number (%v) of ingress points for externally load balanced service: %v", result.Status.LoadBalancer.Ingress, result)
 		}
 		ingress := result.Status.LoadBalancer.Ingress[0]
-		ip := ingress.IP
-		if ip == "" {
-			ip = ingress.Hostname
+		if len(result.Spec.Ports) != 1 {
+			Failf("got unexpected len(Spec.Ports) for LoadBalancer service: %v", result)
 		}
-		port := result.Spec.Ports[0].Port
-
-		pod := &api.Pod{
-			TypeMeta: api.TypeMeta{
-				Kind:       "Pod",
-				APIVersion: latest.Version,
-			},
-			ObjectMeta: api.ObjectMeta{
-				Name:   "elb-test-" + string(util.NewUUID()),
-				Labels: labels,
-			},
-			Spec: api.PodSpec{
-				Containers: []api.Container{
-					{
-						Name:  "webserver",
-						Image: "gcr.io/google_containers/test-webserver",
-					},
-				},
-			},
+		port := result.Spec.Ports[0]
+		if port.NodePort == 0 {
+			Failf("got unexpected Spec.Ports[0].nodePort for LoadBalancer service: %v", result)
+		}
+		if !ServiceNodePortRange.Contains(port.NodePort) {
+			Failf("got unexpected (out-of-range) port for LoadBalancer service: %v", result)
 		}
 
 		By("creating pod to be part of service " + serviceName)
-		podClient := c.Pods(ns)
-		defer func() {
-			By("deleting pod " + pod.Name)
-			defer GinkgoRecover()
-			podClient.Delete(pod.Name, nil)
-		}()
-		if _, err := podClient.Create(pod); err != nil {
-			Failf("Failed to create pod %s: %v", pod.Name, err)
-		}
-		expectNoError(waitForPodRunningInNamespace(c, pod.Name, ns))
+		t.CreateWebserverPod()
+
+		By("hitting the pod through the service's NodePort")
+		testReachable(pickMinionIP(c), port.NodePort)
 
 		By("hitting the pod through the service's external load balancer")
-		var resp *http.Response
-		for t := time.Now(); time.Since(t) < podStartTimeout; time.Sleep(5 * time.Second) {
-			resp, err = http.Get(fmt.Sprintf("http://%s:%d", ip, port))
-			if err == nil {
-				break
-			}
-		}
-		Expect(err).NotTo(HaveOccurred())
-		defer resp.Body.Close()
-
-		body, err := ioutil.ReadAll(resp.Body)
-		Expect(err).NotTo(HaveOccurred())
-		if resp.StatusCode != 200 {
-			Failf("received non-success return status %q trying to access pod through load balancer; got body: %s", resp.Status, string(body))
-		}
-		if !strings.Contains(string(body), "test-webserver") {
-			Failf("received response body without expected substring 'test-webserver': %s", string(body))
-		}
+		testLoadBalancerReachable(ingress, 80)
 	})
 
 	It("should be able to create a functioning NodePort service", func() {
 		serviceName := "nodeportservice-test"
 		ns := namespaces[0]
-		labels := map[string]string{
-			"testid": "nodeportservice-test",
-		}
-		service := &api.Service{
-			ObjectMeta: api.ObjectMeta{
-				Name: serviceName,
-			},
-			Spec: api.ServiceSpec{
-				Selector: labels,
-				Ports: []api.ServicePort{{
-					Port:       80,
-					TargetPort: util.NewIntOrStringFromInt(80),
-				}},
-				Type: api.ServiceTypeNodePort,
-			},
-		}
 
-		By("creating service " + serviceName + " with visibility=NodePort in namespace " + ns)
+		t := NewWebserverTest(c, ns, serviceName)
+		defer func() {
+			defer GinkgoRecover()
+			errs := t.Cleanup()
+			if len(errs) != 0 {
+				Failf("errors in cleanup: %v", errs)
+			}
+		}()
+
+		service := t.BuildServiceSpec()
+		service.Spec.Type = api.ServiceTypeNodePort
+
+		By("creating service " + serviceName + " with type=NodePort in namespace " + ns)
 		result, err := c.Services(ns).Create(service)
 		Expect(err).NotTo(HaveOccurred())
 		defer func(ns, serviceName string) { // clean up when we're done
@@ -389,64 +350,291 @@ var _ = Describe("Services", func() {
 		if nodePort == 0 {
 			Failf("got unexpected nodePort (%d) on Ports[0] for NodePort service: %v", nodePort, result)
 		}
-
-		publicIps, err := getMinionPublicIps(c)
-		Expect(err).NotTo(HaveOccurred())
-		if len(publicIps) == 0 {
-			Failf("got unexpected number (%d) of public IPs", len(publicIps))
-		}
-		ip := publicIps[0]
-
-		pod := &api.Pod{
-			TypeMeta: api.TypeMeta{
-				Kind:       "Pod",
-				APIVersion: latest.Version,
-			},
-			ObjectMeta: api.ObjectMeta{
-				Name:   "publicservice-test-" + string(util.NewUUID()),
-				Labels: labels,
-			},
-			Spec: api.PodSpec{
-				Containers: []api.Container{
-					{
-						Name:  "webserver",
-						Image: "gcr.io/google_containers/test-webserver",
-					},
-				},
-			},
+		if !ServiceNodePortRange.Contains(nodePort) {
+			Failf("got unexpected (out-of-range) port for NodePort service: %v", result)
 		}
 
 		By("creating pod to be part of service " + serviceName)
-		podClient := c.Pods(ns)
-		defer func() {
-			By("deleting pod " + pod.Name)
-			defer GinkgoRecover()
-			podClient.Delete(pod.Name, nil)
-		}()
-		if _, err := podClient.Create(pod); err != nil {
-			Failf("Failed to create pod %s: %v", pod.Name, err)
-		}
-		expectNoError(waitForPodRunningInNamespace(c, pod.Name, ns))
+		t.CreateWebserverPod()
 
-		By("hitting the pod through the service's external IPs")
-		var resp *http.Response
-		for t := time.Now(); time.Since(t) < podStartTimeout; time.Sleep(5 * time.Second) {
-			resp, err = http.Get(fmt.Sprintf("http://%s:%d", ip, nodePort))
-			if err == nil {
+		By("hitting the pod through the service's NodePort")
+		ip := pickMinionIP(c)
+		testReachable(ip, nodePort)
+	})
+
+	It("should be able to change the type and nodeport settings of a service", func() {
+		serviceName := "mutability-service-test"
+		ns := namespaces[0]
+
+		t := NewWebserverTest(c, ns, serviceName)
+		defer func() {
+			defer GinkgoRecover()
+			errs := t.Cleanup()
+			if len(errs) != 0 {
+				Failf("errors in cleanup: %v", errs)
+			}
+		}()
+
+		service := t.BuildServiceSpec()
+
+		By("creating service " + serviceName + " with type unspecified in namespace " + t.Namespace)
+		service, err := t.CreateService(service)
+		Expect(err).NotTo(HaveOccurred())
+
+		if service.Spec.Type != api.ServiceTypeClusterIP {
+			Failf("got unexpected Spec.Type for default service: %v", service)
+		}
+		if len(service.Spec.Ports) != 1 {
+			Failf("got unexpected len(Spec.Ports) for default service: %v", service)
+		}
+		port := service.Spec.Ports[0]
+		if port.NodePort != 0 {
+			Failf("got unexpected Spec.Ports[0].nodePort for default service: %v", service)
+		}
+		if len(service.Status.LoadBalancer.Ingress) != 0 {
+			Failf("got unexpected len(Status.LoadBalancer.Ingresss) for default service: %v", service)
+		}
+
+		By("creating pod to be part of service " + t.ServiceName)
+		t.CreateWebserverPod()
+
+		By("changing service " + serviceName + " to type=NodePort")
+		service.Spec.Type = api.ServiceTypeNodePort
+		service, err = c.Services(ns).Update(service)
+		Expect(err).NotTo(HaveOccurred())
+
+		if service.Spec.Type != api.ServiceTypeNodePort {
+			Failf("got unexpected Spec.Type for NodePort service: %v", service)
+		}
+		if len(service.Spec.Ports) != 1 {
+			Failf("got unexpected len(Spec.Ports) for NodePort service: %v", service)
+		}
+		port = service.Spec.Ports[0]
+		if port.NodePort == 0 {
+			Failf("got unexpected Spec.Ports[0].nodePort for NodePort service: %v", service)
+		}
+		if !ServiceNodePortRange.Contains(port.NodePort) {
+			Failf("got unexpected (out-of-range) port for NodePort service: %v", service)
+		}
+
+		if len(service.Status.LoadBalancer.Ingress) != 0 {
+			Failf("got unexpected len(Status.LoadBalancer.Ingresss) for NodePort service: %v", service)
+		}
+		By("hitting the pod through the service's NodePort")
+		ip := pickMinionIP(c)
+		nodePort1 := port.NodePort // Save for later!
+		testReachable(ip, nodePort1)
+
+		By("changing service " + serviceName + " to type=LoadBalancer")
+		service.Spec.Type = api.ServiceTypeLoadBalancer
+		service, err = c.Services(ns).Update(service)
+		Expect(err).NotTo(HaveOccurred())
+
+		// Wait for the load balancer to be created asynchronously, which is
+		// currently indicated by a public IP address being added to the spec.
+		service, err = waitForPublicIPs(c, serviceName, ns)
+		Expect(err).NotTo(HaveOccurred())
+
+		if service.Spec.Type != api.ServiceTypeLoadBalancer {
+			Failf("got unexpected Spec.Type for LoadBalancer service: %v", service)
+		}
+		if len(service.Spec.Ports) != 1 {
+			Failf("got unexpected len(Spec.Ports) for LoadBalancer service: %v", service)
+		}
+		port = service.Spec.Ports[0]
+		if port.NodePort != nodePort1 {
+			Failf("got unexpected Spec.Ports[0].nodePort for LoadBalancer service: %v", service)
+		}
+		if len(service.Status.LoadBalancer.Ingress) != 1 {
+			Failf("got unexpected len(Status.LoadBalancer.Ingresss) for LoadBalancer service: %v", service)
+		}
+		ingress := service.Status.LoadBalancer.Ingress[0]
+		if ingress.IP == "" && ingress.Hostname == "" {
+			Failf("got unexpected Status.LoadBalancer.Ingresss[0] for LoadBalancer service: %v", service)
+		}
+		By("hitting the pod through the service's NodePort")
+		ip = pickMinionIP(c)
+		testReachable(ip, nodePort1)
+		By("hitting the pod through the service's LoadBalancer")
+		testLoadBalancerReachable(ingress, 80)
+
+		By("changing service " + serviceName + " update NodePort")
+		nodePort2 := nodePort1 - 1
+		if !ServiceNodePortRange.Contains(nodePort2) {
+			//Check for (unlikely) assignment at bottom of range
+			nodePort2 = nodePort1 + 1
+		}
+		service.Spec.Ports[0].NodePort = nodePort2
+		service, err = c.Services(ns).Update(service)
+		Expect(err).NotTo(HaveOccurred())
+
+		if service.Spec.Type != api.ServiceTypeLoadBalancer {
+			Failf("got unexpected Spec.Type for updated-NodePort service: %v", service)
+		}
+		if len(service.Spec.Ports) != 1 {
+			Failf("got unexpected len(Spec.Ports) for updated-NodePort service: %v", service)
+		}
+		port = service.Spec.Ports[0]
+		if port.NodePort != nodePort2 {
+			Failf("got unexpected Spec.Ports[0].nodePort for NodePort service: %v", service)
+		}
+		if len(service.Status.LoadBalancer.Ingress) != 0 {
+			Failf("got unexpected len(Status.LoadBalancer.Ingresss) for NodePort service: %v", service)
+		}
+		By("hitting the pod through the service's updated NodePort")
+		testReachable(ip, nodePort2)
+		By("hitting the pod through the service's LoadBalancer")
+		testLoadBalancerReachable(ingress, 80)
+		By("checking the old NodePort is closed")
+		testNotReachable(ip, nodePort1)
+
+		By("changing service " + serviceName + " back to type=ClusterIP")
+		service.Spec.Type = api.ServiceTypeClusterIP
+		service, err = c.Services(ns).Update(service)
+		Expect(err).NotTo(HaveOccurred())
+
+		if service.Spec.Type != api.ServiceTypeClusterIP {
+			Failf("got unexpected Spec.Type for back-to-ClusterIP service: %v", service)
+		}
+		if len(service.Spec.Ports) != 1 {
+			Failf("got unexpected len(Spec.Ports) for back-to-ClusterIP service: %v", service)
+		}
+		port = service.Spec.Ports[0]
+		if port.NodePort != 0 {
+			Failf("got unexpected Spec.Ports[0].nodePort for back-to-ClusterIP service: %v", service)
+		}
+		if len(service.Status.LoadBalancer.Ingress) != 0 {
+			Failf("got unexpected len(Status.LoadBalancer.Ingresss) for back-to-ClusterIP service: %v", service)
+		}
+		By("checking the NodePort (original) is closed")
+		ip = pickMinionIP(c)
+		testNotReachable(ip, nodePort1)
+		By("checking the NodePort (updated) is closed")
+		ip = pickMinionIP(c)
+		testNotReachable(ip, nodePort2)
+		By("checking the LoadBalancer is closed")
+		testLoadBalancerNotReachable(ingress, 80)
+	})
+
+	It("should prevent NodePort collisions", func() {
+		serviceName := "nodeport-collision"
+		serviceName2 := serviceName + "2"
+		ns := namespaces[0]
+
+		t := NewWebserverTest(c, ns, serviceName)
+		defer func() {
+			defer GinkgoRecover()
+			errs := t.Cleanup()
+			if len(errs) != 0 {
+				Failf("errors in cleanup: %v", errs)
+			}
+		}()
+
+		service := t.BuildServiceSpec()
+		service.Spec.Type = api.ServiceTypeNodePort
+
+		By("creating service " + serviceName + " with type NodePort in namespace " + ns)
+		result, err := t.CreateService(service)
+		Expect(err).NotTo(HaveOccurred())
+
+		if result.Spec.Type != api.ServiceTypeNodePort {
+			Failf("got unexpected Spec.Type for new service: %v", result)
+		}
+		if len(result.Spec.Ports) != 1 {
+			Failf("got unexpected len(Spec.Ports) for new service: %v", result)
+		}
+		port := result.Spec.Ports[0]
+		if port.NodePort == 0 {
+			Failf("got unexpected Spec.Ports[0].nodePort for new service: %v", result)
+		}
+
+		By("creating service " + serviceName + " with conflicting NodePort")
+
+		service2 := t.BuildServiceSpec()
+		service2.Spec.Type = api.ServiceTypeNodePort
+		service2.Spec.Ports[0].NodePort = port.NodePort
+
+		By("creating service " + serviceName2 + " with conflicting NodePort")
+		result2, err := t.CreateService(service2)
+		if err == nil {
+			Failf("Created service with conflicting NodePort: %v", result2)
+		}
+		// TODO: check error value?
+		By(fmt.Sprintf("got (expected) error creating service with conflicting NodePort: %v", err))
+
+		By("deleting original service " + serviceName + " with type NodePort in namespace " + ns)
+		err = t.DeleteService(serviceName)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("creating service " + serviceName2 + " with no-longer-conflicting NodePort")
+		_, err = t.CreateService(service2)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should check NodePort out-of-range", func() {
+		serviceName := "nodeport-range-test"
+		ns := namespaces[0]
+
+		t := NewWebserverTest(c, ns, serviceName)
+		defer func() {
+			defer GinkgoRecover()
+			errs := t.Cleanup()
+			if len(errs) != 0 {
+				Failf("errors in cleanup: %v", errs)
+			}
+		}()
+
+		service := t.BuildServiceSpec()
+		service.Spec.Type = api.ServiceTypeNodePort
+
+		By("creating service " + serviceName + " with type NodePort in namespace " + ns)
+		service, err := t.CreateService(service)
+		Expect(err).NotTo(HaveOccurred())
+
+		if service.Spec.Type != api.ServiceTypeNodePort {
+			Failf("got unexpected Spec.Type for new service: %v", service)
+		}
+		if len(service.Spec.Ports) != 1 {
+			Failf("got unexpected len(Spec.Ports) for new service: %v", service)
+		}
+		port := service.Spec.Ports[0]
+		if port.NodePort == 0 {
+			Failf("got unexpected Spec.Ports[0].nodePort for new service: %v", service)
+		}
+		if !ServiceNodePortRange.Contains(port.NodePort) {
+			Failf("got unexpected (out-of-range) port for new service: %v", service)
+		}
+
+		outOfRangeNodePort := 0
+		for {
+			outOfRangeNodePort = 1 + rand.Intn(65535)
+			if !ServiceNodePortRange.Contains(outOfRangeNodePort) {
 				break
 			}
 		}
-		Expect(err).NotTo(HaveOccurred())
-		defer resp.Body.Close()
+		By(fmt.Sprintf("changing service "+serviceName+" to out-of-range NodePort %d", outOfRangeNodePort))
+		service.Spec.Ports[0].NodePort = outOfRangeNodePort
+		service, err = t.Client.Services(t.Namespace).Update(service)
+		if err == nil {
+			Failf("failed to prevent update of service with out-of-range NodePort: %v", service)
+		}
+		// TODO: check error value?
+		By(fmt.Sprintf("got (expected) error updating service to out-of-range NodePort: %v", err))
 
-		body, err := ioutil.ReadAll(resp.Body)
+		By("deleting original service " + serviceName)
+		err = t.DeleteService(serviceName)
 		Expect(err).NotTo(HaveOccurred())
-		if resp.StatusCode != 200 {
-			Failf("received non-success return status %q trying to access pod through public port; got body: %s", resp.Status, string(body))
+
+		By(fmt.Sprintf("creating service "+serviceName+" with out-of-range NodePort %d", service.Spec.Ports[0].NodePort))
+		service = t.BuildServiceSpec()
+		service.Spec.Type = api.ServiceTypeNodePort
+		service.Spec.Ports[0].NodePort = outOfRangeNodePort
+		service, err = t.CreateService(service)
+		if err == nil {
+			Failf("failed to prevent create of service with out-of-range NodePort (%d): %v", outOfRangeNodePort, service)
 		}
-		if !strings.Contains(string(body), "test-webserver") {
-			Failf("received response body without expected substring 'test-webserver': %s", string(body))
-		}
+		// TODO: check error value?
+		By(fmt.Sprintf("got (expected) error creating service with out-of-range NodePort: %v", err))
 	})
 
 	It("should correctly serve identically named services in different namespaces on different external IP addresses", func() {
@@ -658,4 +846,226 @@ func getMinionPublicIps(c *client.Client) ([]string, error) {
 		ips = collectAddresses(nodes, api.NodeLegacyHostIP)
 	}
 	return ips, nil
+}
+
+func pickMinionIP(c *client.Client) string {
+	publicIps, err := getMinionPublicIps(c)
+	Expect(err).NotTo(HaveOccurred())
+	if len(publicIps) == 0 {
+		Failf("got unexpected number (%d) of public IPs", len(publicIps))
+	}
+	ip := publicIps[0]
+	return ip
+}
+
+func testLoadBalancerReachable(ingress api.LoadBalancerIngress, port int) {
+	ip := ingress.IP
+	if ip == "" {
+		ip = ingress.Hostname
+	}
+
+	testReachable(ip, port)
+}
+
+func testLoadBalancerNotReachable(ingress api.LoadBalancerIngress, port int) {
+	ip := ingress.IP
+	if ip == "" {
+		ip = ingress.Hostname
+	}
+
+	testNotReachable(ip, port)
+}
+
+func testReachable(ip string, port int) {
+	var err error
+	var resp *http.Response
+
+	url := fmt.Sprintf("http://%s:%d", ip, port)
+	if ip == "" {
+		Failf("got empty IP for reachability check", url)
+	}
+	if port == 0 {
+		Failf("got port==0 for reachability check", url)
+	}
+
+	By(fmt.Sprintf("Checking reachability of %s", url))
+	for t := time.Now(); time.Since(t) < podStartTimeout; time.Sleep(5 * time.Second) {
+		resp, err = http.Get(url)
+		if err == nil {
+			break
+		}
+	}
+	Expect(err).NotTo(HaveOccurred())
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	Expect(err).NotTo(HaveOccurred())
+	if resp.StatusCode != 200 {
+		Failf("received non-success return status %q trying to access %s; got body: %s", resp.Status, url, string(body))
+	}
+	if !strings.Contains(string(body), "test-webserver") {
+		Failf("received response body without expected substring 'test-webserver': %s", string(body))
+	}
+}
+
+func testNotReachable(ip string, port int) {
+	var err error
+	var resp *http.Response
+	var body []byte
+
+	url := fmt.Sprintf("http://%s:%d", ip, port)
+	if ip == "" {
+		Failf("got empty IP for non-reachability check", url)
+	}
+	if port == 0 {
+		Failf("got port==0 for non-reachability check", url)
+	}
+
+	for t := time.Now(); time.Since(t) < podStartTimeout; time.Sleep(5 * time.Second) {
+		resp, err = http.Get(url)
+		if err != nil {
+			break
+		}
+		body, err = ioutil.ReadAll(resp.Body)
+		Expect(err).NotTo(HaveOccurred())
+		resp.Body.Close()
+	}
+	if err == nil {
+		Failf("able to reach service when should no longer have been reachable", resp.Status, url, string(body))
+	}
+	// TODO: Check type of error
+	By(fmt.Sprintf("Found (expected) error during not-reachability test %v", err))
+}
+
+// Simple helper class to avoid too much boilerplate in tests
+type WebserverTest struct {
+	ServiceName string
+	Namespace   string
+	Client      *client.Client
+
+	TestId string
+	Labels map[string]string
+
+	pods     map[string]bool
+	services map[string]bool
+
+	// Used for generating e.g. unique pod names
+	sequence int32
+}
+
+func NewWebserverTest(client *client.Client, namespace string, serviceName string) *WebserverTest {
+	t := &WebserverTest{}
+	t.Client = client
+	t.Namespace = namespace
+	t.ServiceName = serviceName
+	t.TestId = t.ServiceName + "-" + string(util.NewUUID())
+	t.Labels = map[string]string{
+		"testid": t.TestId,
+	}
+
+	t.pods = make(map[string]bool)
+	t.services = make(map[string]bool)
+
+	return t
+}
+
+func (t *WebserverTest) SequenceNext() int {
+	n := atomic.AddInt32(&t.sequence, 1)
+	return int(n)
+}
+
+// Build default config for a service (which can then be changed)
+func (t *WebserverTest) BuildServiceSpec() *api.Service {
+	service := &api.Service{
+		ObjectMeta: api.ObjectMeta{
+			Name: t.ServiceName,
+		},
+		Spec: api.ServiceSpec{
+			Selector: t.Labels,
+			Ports: []api.ServicePort{{
+				Port:       80,
+				TargetPort: util.NewIntOrStringFromInt(80),
+			}},
+		},
+	}
+	return service
+}
+
+// Create a pod with the well-known webserver configuration, and record it for cleanup
+func (t *WebserverTest) CreateWebserverPod() {
+	name := t.ServiceName + "-" + strconv.Itoa(t.SequenceNext())
+	pod := &api.Pod{
+		TypeMeta: api.TypeMeta{
+			Kind:       "Pod",
+			APIVersion: latest.Version,
+		},
+		ObjectMeta: api.ObjectMeta{
+			Name:   name,
+			Labels: t.Labels,
+		},
+		Spec: api.PodSpec{
+			Containers: []api.Container{
+				{
+					Name:  "webserver",
+					Image: "gcr.io/google_containers/test-webserver",
+				},
+			},
+		},
+	}
+	_, err := t.CreatePod(pod)
+	if err != nil {
+		Failf("Failed to create pod %s: %v", pod.Name, err)
+	}
+	expectNoError(waitForPodRunningInNamespace(t.Client, pod.Name, t.Namespace))
+}
+
+// Create a pod, and record it for cleanup
+func (t *WebserverTest) CreatePod(pod *api.Pod) (*api.Pod, error) {
+	podClient := t.Client.Pods(t.Namespace)
+	result, err := podClient.Create(pod)
+	if err == nil {
+		t.pods[pod.Name] = true
+	}
+	return result, err
+}
+
+// Create a service, and record it for cleanup
+func (t *WebserverTest) CreateService(service *api.Service) (*api.Service, error) {
+	result, err := t.Client.Services(t.Namespace).Create(service)
+	if err != nil {
+		t.services[service.Name] = true
+	}
+	return result, err
+}
+
+// Delete a service, and remove it from the cleanup list
+func (t *WebserverTest) DeleteService(serviceName string) error {
+	err := t.Client.Services(t.Namespace).Delete(serviceName)
+	if err != nil {
+		delete(t.services, serviceName)
+	}
+	return err
+}
+
+func (t *WebserverTest) Cleanup() []error {
+	var errs []error
+
+	for podName := range t.pods {
+		podClient := t.Client.Pods(t.Namespace)
+		By("deleting pod " + podName + " in namespace " + t.Namespace)
+		err := podClient.Delete(podName, nil)
+		if errs != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	for serviceName := range t.services {
+		By("deleting service " + serviceName + " in namespace " + t.Namespace)
+		err := t.Client.Services(t.Namespace).Delete(serviceName)
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return errs
 }
