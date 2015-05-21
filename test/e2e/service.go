@@ -289,8 +289,8 @@ var _ = Describe("Services", func() {
 		}(ns, serviceName)
 
 		// Wait for the load balancer to be created asynchronously, which is
-		// currently indicated by a public IP address being added to the spec.
-		result, err = waitForPublicIPs(c, serviceName, ns)
+		// currently indicated by ingress point(s) being added to the status.
+		result, err = waitForLoadBalancerIngress(c, serviceName, ns)
 		Expect(err).NotTo(HaveOccurred())
 		if len(result.Status.LoadBalancer.Ingress) != 1 {
 			Failf("got unexpected number (%v) of ingress points for externally load balanced service: %v", result.Status.LoadBalancer.Ingress, result)
@@ -430,9 +430,8 @@ var _ = Describe("Services", func() {
 		service, err = c.Services(ns).Update(service)
 		Expect(err).NotTo(HaveOccurred())
 
-		// Wait for the load balancer to be created asynchronously, which is
-		// currently indicated by a public IP address being added to the spec.
-		service, err = waitForPublicIPs(c, serviceName, ns)
+		// Wait for the load balancer to be created asynchronously
+		service, err = waitForLoadBalancerIngress(c, serviceName, ns)
 		Expect(err).NotTo(HaveOccurred())
 
 		if service.Spec.Type != api.ServiceTypeLoadBalancer {
@@ -503,6 +502,11 @@ var _ = Describe("Services", func() {
 		if port.NodePort != 0 {
 			Failf("got unexpected Spec.Ports[0].nodePort for back-to-ClusterIP service: %v", service)
 		}
+
+		// Wait for the load balancer to be destroyed asynchronously
+		service, err = waitForLoadBalancerDestroy(c, serviceName, ns)
+		Expect(err).NotTo(HaveOccurred())
+
 		if len(service.Status.LoadBalancer.Ingress) != 0 {
 			Failf("got unexpected len(Status.LoadBalancer.Ingresss) for back-to-ClusterIP service: %v", service)
 		}
@@ -559,8 +563,7 @@ var _ = Describe("Services", func() {
 		if err == nil {
 			Failf("Created service with conflicting NodePort: %v", result2)
 		}
-		// TODO: check error value?
-		By(fmt.Sprintf("got (expected) error creating service with conflicting NodePort: %v", err))
+		Expect(fmt.Sprintf("%v", err)).To(Equal("provided port is already allocated"))
 
 		By("deleting original service " + serviceName + " with type NodePort in namespace " + ns)
 		err = t.DeleteService(serviceName)
@@ -614,18 +617,17 @@ var _ = Describe("Services", func() {
 		}
 		By(fmt.Sprintf("changing service "+serviceName+" to out-of-range NodePort %d", outOfRangeNodePort))
 		service.Spec.Ports[0].NodePort = outOfRangeNodePort
-		service, err = t.Client.Services(t.Namespace).Update(service)
+		result, err := t.Client.Services(t.Namespace).Update(service)
 		if err == nil {
-			Failf("failed to prevent update of service with out-of-range NodePort: %v", service)
+			Failf("failed to prevent update of service with out-of-range NodePort: %v", result)
 		}
-		// TODO: check error value?
-		By(fmt.Sprintf("got (expected) error updating service to out-of-range NodePort: %v", err))
+		Expect(fmt.Sprintf("%v", err)).To(Equal("provided port is not in the valid range"))
 
 		By("deleting original service " + serviceName)
 		err = t.DeleteService(serviceName)
 		Expect(err).NotTo(HaveOccurred())
 
-		By(fmt.Sprintf("creating service "+serviceName+" with out-of-range NodePort %d", service.Spec.Ports[0].NodePort))
+		By(fmt.Sprintf("creating service "+serviceName+" with out-of-range NodePort %d", outOfRangeNodePort))
 		service = t.BuildServiceSpec()
 		service.Spec.Type = api.ServiceTypeNodePort
 		service.Spec.Ports[0].NodePort = outOfRangeNodePort
@@ -633,8 +635,7 @@ var _ = Describe("Services", func() {
 		if err == nil {
 			Failf("failed to prevent create of service with out-of-range NodePort (%d): %v", outOfRangeNodePort, service)
 		}
-		// TODO: check error value?
-		By(fmt.Sprintf("got (expected) error creating service with out-of-range NodePort: %v", err))
+		Expect(fmt.Sprintf("%v", err)).To(Equal("provided port is not in the valid range"))
 	})
 
 	It("should correctly serve identically named services in different namespaces on different external IP addresses", func() {
@@ -677,7 +678,7 @@ var _ = Describe("Services", func() {
 		}
 		for _, namespace := range namespaces {
 			for _, serviceName := range serviceNames {
-				result, err := waitForPublicIPs(c, serviceName, namespace)
+				result, err := waitForLoadBalancerIngress(c, serviceName, namespace)
 				Expect(err).NotTo(HaveOccurred())
 				for i := range result.Status.LoadBalancer.Ingress {
 					ingress := result.Status.LoadBalancer.Ingress[i].IP
@@ -692,10 +693,10 @@ var _ = Describe("Services", func() {
 	})
 })
 
-func waitForPublicIPs(c *client.Client, serviceName, namespace string) (*api.Service, error) {
+func waitForLoadBalancerIngress(c *client.Client, serviceName, namespace string) (*api.Service, error) {
 	const timeout = 4 * time.Minute
 	var service *api.Service
-	By(fmt.Sprintf("waiting up to %v for service %s in namespace %s to have a public IP", timeout, serviceName, namespace))
+	By(fmt.Sprintf("waiting up to %v for service %s in namespace %s to have a LoadBalancer ingress point", timeout, serviceName, namespace))
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(5 * time.Second) {
 		service, err := c.Services(namespace).Get(serviceName)
 		if err != nil {
@@ -705,9 +706,27 @@ func waitForPublicIPs(c *client.Client, serviceName, namespace string) (*api.Ser
 		if len(service.Status.LoadBalancer.Ingress) > 0 {
 			return service, nil
 		}
-		Logf("Waiting for service %s in namespace %s to have an ingress point (%v)", serviceName, namespace, time.Since(start))
+		Logf("Waiting for service %s in namespace %s to have a LoadBalancer ingress point (%v)", serviceName, namespace, time.Since(start))
 	}
-	return service, fmt.Errorf("service %s in namespace %s doesn't have an ingress point after %.2f seconds", serviceName, namespace, timeout.Seconds())
+	return service, fmt.Errorf("service %s in namespace %s doesn't have a LoadBalancer ingress point after %.2f seconds", serviceName, namespace, timeout.Seconds())
+}
+
+func waitForLoadBalancerDestroy(c *client.Client, serviceName, namespace string) (*api.Service, error) {
+	const timeout = 4 * time.Minute
+	var service *api.Service
+	By(fmt.Sprintf("waiting up to %v for service %s in namespace %s to have no LoadBalancer ingress points", timeout, serviceName, namespace))
+	for start := time.Now(); time.Since(start) < timeout; time.Sleep(5 * time.Second) {
+		service, err := c.Services(namespace).Get(serviceName)
+		if err != nil {
+			Logf("Get service failed, ignoring for 5s: %v", err)
+			continue
+		}
+		if len(service.Status.LoadBalancer.Ingress) == 0 {
+			return service, nil
+		}
+		Logf("Waiting for service %s in namespace %s to have no LoadBalancer ingress points (%v)", serviceName, namespace, time.Since(start))
+	}
+	return service, fmt.Errorf("service %s in namespace %s still has LoadBalancer ingress points after %.2f seconds", serviceName, namespace, timeout.Seconds())
 }
 
 func validateUniqueOrFail(s []string) {
@@ -1054,7 +1073,7 @@ func (t *WebserverTest) Cleanup() []error {
 		podClient := t.Client.Pods(t.Namespace)
 		By("deleting pod " + podName + " in namespace " + t.Namespace)
 		err := podClient.Delete(podName, nil)
-		if errs != nil {
+		if err != nil {
 			errs = append(errs, err)
 		}
 	}
