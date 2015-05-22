@@ -234,13 +234,15 @@ func (rs *REST) Update(ctx api.Context, obj runtime.Object) (runtime.Object, boo
 				if !contains(oldNodePorts, nodePort) {
 					err := nodePortOp.Allocate(nodePort)
 					if err != nil {
-						return nil, false, err
+						el := fielderrors.ValidationErrorList{fielderrors.NewFieldInvalid("nodePort", nodePort, err.Error())}.PrefixIndex(i).Prefix("spec.ports")
+						return nil, false, errors.NewInvalid("Service", service.Name, el)
 					}
 				}
 			} else {
 				nodePort, err = nodePortOp.AllocateNext()
 				if err != nil {
-					return nil, false, err
+					el := fielderrors.ValidationErrorList{fielderrors.NewFieldInvalid("nodePort", nodePort, err.Error())}.PrefixIndex(i).Prefix("spec.ports")
+					return nil, false, errors.NewInvalid("Service", service.Name, el)
 				}
 				servicePort.NodePort = nodePort
 			}
