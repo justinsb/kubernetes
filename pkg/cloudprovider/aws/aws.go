@@ -1672,7 +1672,7 @@ func toStatus(loadBalancerName *string, dnsName *string) *api.LoadBalancerStatus
 }
 
 // DeleteTCPLoadBalancer implements TCPLoadBalancer.DeleteTCPLoadBalancer.
-func (s *AWSCloud) DeleteTCPLoadBalancer(name, region string) error {
+func (s *AWSCloud) EnsureTCPLoadBalancerDeleted(name, region string) error {
 	// TODO(justinsb): Delete security group
 
 	elbClient, err := s.getELBClient(region)
