@@ -640,7 +640,8 @@ var _ = Describe("Services", func() {
 		if err == nil {
 			Failf("Created service with conflicting NodePort: %v", result2)
 		}
-		Expect(fmt.Sprintf("%v", err)).To(Equal("provided port is already allocated"))
+		expectedErr := fmt.Sprintf("Service \"%s=\" is invalid: spec.ports.nodePort: invalid value '%d': provided port already allocated", serviceName, port.NodePort)
+		Expect(fmt.Sprintf("%v", err)).To(Equal(expectedErr))
 
 		By("deleting original service " + serviceName + " with type NodePort in namespace " + ns)
 		err = t.DeleteService(serviceName)
@@ -698,7 +699,8 @@ var _ = Describe("Services", func() {
 		if err == nil {
 			Failf("failed to prevent update of service with out-of-range NodePort: %v", result)
 		}
-		Expect(fmt.Sprintf("%v", err)).To(Equal("provided port is not in the valid range"))
+		expectedErr := fmt.Sprintf("Service \"%s=\" is invalid: spec.ports.nodePort: invalid value '%d': provided port is not in the valid range", serviceName, outOfRangeNodePort)
+		Expect(fmt.Sprintf("%v", err)).To(Equal(expectedErr))
 
 		By("deleting original service " + serviceName)
 		err = t.DeleteService(serviceName)
@@ -712,7 +714,7 @@ var _ = Describe("Services", func() {
 		if err == nil {
 			Failf("failed to prevent create of service with out-of-range NodePort (%d): %v", outOfRangeNodePort, service)
 		}
-		Expect(fmt.Sprintf("%v", err)).To(Equal("provided port is not in the valid range"))
+		Expect(fmt.Sprintf("%v", err)).To(Equal(expectedErr))
 	})
 
 	It("should release NodePorts on delete", func() {
