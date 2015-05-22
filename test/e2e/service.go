@@ -450,7 +450,7 @@ var _ = Describe("Services", func() {
 		ip = pickMinionIP(c)
 		testReachable(ip, nodePort1)
 		By("hitting the pod through the service's LoadBalancer")
-		testLoadBalancerReachable(ingress, 80)
+		testLoadBalancerReachable(ingress1, 80)
 
 		By("changing service " + serviceName + " update NodePort")
 		nodePort2 := nodePort1 - 1
@@ -475,7 +475,7 @@ var _ = Describe("Services", func() {
 		if len(service.Status.LoadBalancer.Ingress) != 1 {
 			Failf("got unexpected len(Status.LoadBalancer.Ingresss) for NodePort service: %v", service)
 		}
-		ingress2 := service.Status.LoadBalancer.Ingress
+		ingress2 := service.Status.LoadBalancer.Ingress[0]
 		// TODO: This is a problem on AWS; we can't just always be changing the LB
 		Expect(ingress1).To(Equal(ingress2))
 
@@ -516,7 +516,7 @@ var _ = Describe("Services", func() {
 		ip = pickMinionIP(c)
 		testNotReachable(ip, nodePort2)
 		By("checking the LoadBalancer is closed")
-		testLoadBalancerNotReachable(ingress, 80)
+		testLoadBalancerNotReachable(ingress2, 80)
 	})
 
 	It("should release the load balancer when Type goes from LoadBalancer -> NodePort", func() {
