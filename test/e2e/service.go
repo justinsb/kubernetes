@@ -555,6 +555,7 @@ var _ = Describe("Services", func() {
 		By("creating service " + serviceName + " with conflicting NodePort")
 
 		service2 := t.BuildServiceSpec()
+		service2.Name = serviceName2
 		service2.Spec.Type = api.ServiceTypeNodePort
 		service2.Spec.Ports[0].NodePort = port.NodePort
 
@@ -1051,7 +1052,7 @@ func (t *WebserverTest) CreatePod(pod *api.Pod) (*api.Pod, error) {
 // Create a service, and record it for cleanup
 func (t *WebserverTest) CreateService(service *api.Service) (*api.Service, error) {
 	result, err := t.Client.Services(t.Namespace).Create(service)
-	if err != nil {
+	if err == nil {
 		t.services[service.Name] = true
 	}
 	return result, err
