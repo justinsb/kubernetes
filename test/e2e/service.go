@@ -582,7 +582,7 @@ var _ = Describe("Services", func() {
 		if len(service.Spec.Ports) != 1 {
 			Failf("got unexpected len(Spec.Ports) for NodePort service: %v", service)
 		}
-		if service.Spec.Ports[0].NodePort == nodePort {
+		if service.Spec.Ports[0].NodePort != nodePort {
 			Failf("got unexpected Spec.Ports[0].NodePort for NodePort service: %v", service)
 		}
 
