@@ -515,6 +515,87 @@ var _ = Describe("Services", func() {
 		testLoadBalancerNotReachable(ingress, 80)
 	})
 
+	It("should release the load balancer when Type goes from LoadBalancer -> NodePort", func() {
+		serviceName := "service-release-lb"
+		ns := namespaces[0]
+
+		t := NewWebserverTest(c, ns, serviceName)
+		defer func() {
+			defer GinkgoRecover()
+			errs := t.Cleanup()
+			if len(errs) != 0 {
+				Failf("errors in cleanup: %v", errs)
+			}
+		}()
+
+		service := t.BuildServiceSpec()
+		service.Spec.Type = api.ServiceTypeLoadBalancer
+
+		By("creating service " + serviceName + " with type LoadBalancer")
+		service, err := t.CreateService(service)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("creating pod to be part of service " + t.ServiceName)
+		t.CreateWebserverPod()
+
+		if service.Spec.Type != api.ServiceTypeLoadBalancer {
+			Failf("got unexpected Spec.Type for LoadBalancer service: %v", service)
+		}
+		if len(service.Spec.Ports) != 1 {
+			Failf("got unexpected len(Spec.Ports) for LoadBalancer service: %v", service)
+		}
+		nodePort := service.Spec.Ports[0].NodePort
+		if nodePort == 0 {
+			Failf("got unexpected Spec.Ports[0].NodePort for LoadBalancer service: %v", service)
+		}
+
+		// Wait for the load balancer to be created asynchronously
+		service, err = waitForLoadBalancerIngress(c, serviceName, ns)
+		Expect(err).NotTo(HaveOccurred())
+
+		if len(service.Status.LoadBalancer.Ingress) != 1 {
+			Failf("got unexpected len(Status.LoadBalancer.Ingresss) for LoadBalancer service: %v", service)
+		}
+		ingress := service.Status.LoadBalancer.Ingress[0]
+		if ingress.IP == "" && ingress.Hostname == "" {
+			Failf("got unexpected Status.LoadBalancer.Ingresss[0] for LoadBalancer service: %v", service)
+		}
+
+		By("hitting the pod through the service's NodePort")
+		ip := pickMinionIP(c)
+		testReachable(ip, nodePort)
+		By("hitting the pod through the service's LoadBalancer")
+		testLoadBalancerReachable(ingress, 80)
+
+		By("changing service " + serviceName + " to type=NodePort")
+		service.Spec.Type = api.ServiceTypeNodePort
+		service, err = c.Services(ns).Update(service)
+		Expect(err).NotTo(HaveOccurred())
+
+		if service.Spec.Type != api.ServiceTypeNodePort {
+			Failf("got unexpected Spec.Type for NodePort service: %v", service)
+		}
+		if len(service.Spec.Ports) != 1 {
+			Failf("got unexpected len(Spec.Ports) for NodePort service: %v", service)
+		}
+		if service.Spec.Ports[0].NodePort == nodePort {
+			Failf("got unexpected Spec.Ports[0].NodePort for NodePort service: %v", service)
+		}
+
+		// Wait for the load balancer to be created asynchronously
+		service, err = waitForLoadBalancerDestroy(c, serviceName, ns)
+		Expect(err).NotTo(HaveOccurred())
+
+		if len(service.Status.LoadBalancer.Ingress) != 0 {
+			Failf("got unexpected len(Status.LoadBalancer.Ingresss) for NodePort service: %v", service)
+		}
+
+		By("hitting the pod through the service's NodePort")
+		testReachable(ip, nodePort)
+		By("checking the LoadBalancer is closed")
+		testLoadBalancerNotReachable(ingress, 80)
+	})
+
 	It("should prevent NodePort collisions", func() {
 		serviceName := "nodeport-collision"
 		serviceName2 := serviceName + "2"
