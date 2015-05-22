@@ -1043,6 +1043,7 @@ func testReachable(ip string, port int) {
 		if err == nil {
 			break
 		}
+		By(fmt.Sprintf("Got error waiting for reachability of %s: %v", url, err))
 	}
 	Expect(err).NotTo(HaveOccurred())
 	defer resp.Body.Close()
@@ -1078,6 +1079,7 @@ func testNotReachable(ip string, port int) {
 		body, err = ioutil.ReadAll(resp.Body)
 		Expect(err).NotTo(HaveOccurred())
 		resp.Body.Close()
+		By(fmt.Sprintf("Got success waiting for reachability of %s: %v", url, resp.Status))
 	}
 	if err == nil {
 		Failf("able to reach service %s when should no longer have been reachable: %q body=%s", url, resp.Status, string(body))
