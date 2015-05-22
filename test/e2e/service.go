@@ -639,6 +639,53 @@ var _ = Describe("Services", func() {
 		Expect(fmt.Sprintf("%v", err)).To(Equal("provided port is not in the valid range"))
 	})
 
+	It("should release NodePorts on delete", func() {
+		serviceName := "nodeport-reuse"
+		ns := namespaces[0]
+
+		t := NewWebserverTest(c, ns, serviceName)
+		defer func() {
+			defer GinkgoRecover()
+			errs := t.Cleanup()
+			if len(errs) != 0 {
+				Failf("errors in cleanup: %v", errs)
+			}
+		}()
+
+		service := t.BuildServiceSpec()
+		service.Spec.Type = api.ServiceTypeNodePort
+
+		By("creating service " + serviceName + " with type NodePort in namespace " + ns)
+		service, err := t.CreateService(service)
+		Expect(err).NotTo(HaveOccurred())
+
+		if service.Spec.Type != api.ServiceTypeNodePort {
+			Failf("got unexpected Spec.Type for new service: %v", service)
+		}
+		if len(service.Spec.Ports) != 1 {
+			Failf("got unexpected len(Spec.Ports) for new service: %v", service)
+		}
+		port := service.Spec.Ports[0]
+		if port.NodePort == 0 {
+			Failf("got unexpected Spec.Ports[0].nodePort for new service: %v", service)
+		}
+		if !ServiceNodePortRange.Contains(port.NodePort) {
+			Failf("got unexpected (out-of-range) port for new service: %v", service)
+		}
+		port1 := port.NodePort
+
+		By("deleting original service " + serviceName)
+		err = t.DeleteService(serviceName)
+		Expect(err).NotTo(HaveOccurred())
+
+		By(fmt.Sprintf("creating service "+serviceName+" with same NodePort %d", port1))
+		service = t.BuildServiceSpec()
+		service.Spec.Type = api.ServiceTypeNodePort
+		service.Spec.Ports[0].NodePort = port1
+		service, err = t.CreateService(service)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 	It("should correctly serve identically named services in different namespaces on different external IP addresses", func() {
 		if !providerIs("gce", "gke", "aws") {
 			By(fmt.Sprintf("Skipping service namespace collision test; uses ServiceTypeLoadBalancer, a (gce|gke|aws) feature"))
