@@ -282,11 +282,6 @@ var _ = Describe("Services", func() {
 		By("creating service " + serviceName + " with external load balancer in namespace " + ns)
 		result, err := t.CreateService(service)
 		Expect(err).NotTo(HaveOccurred())
-		defer func(ns, serviceName string) { // clean up when we're done
-			By("deleting service " + serviceName + " in namespace " + ns)
-			err := c.Services(ns).Delete(serviceName)
-			Expect(err).NotTo(HaveOccurred())
-		}(ns, serviceName)
 
 		// Wait for the load balancer to be created asynchronously, which is
 		// currently indicated by ingress point(s) being added to the status.
@@ -998,7 +993,7 @@ func testNotReachable(ip string, port int) {
 		resp.Body.Close()
 	}
 	if err == nil {
-		Failf("able to reach service when should no longer have been reachable", resp.Status, url, string(body))
+		Failf("able to reach service %s when should no longer have been reachable: %q body=%s", url, resp.Status, string(body))
 	}
 	// TODO: Check type of error
 	By(fmt.Sprintf("Found (expected) error during not-reachability test %v", err))
