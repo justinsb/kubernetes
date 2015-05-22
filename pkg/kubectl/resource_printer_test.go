@@ -716,11 +716,6 @@ func TestPrintHumanReadableService(t *testing.T) {
 		{
 			Spec: api.ServiceSpec{
 				PortalIP: "1.2.3.4",
-				DeprecatedPublicIPs: []string{
-					"2.3.4.5",
-					"4.5.6.7",
-					"5.6.7.8",
-				},
 				Ports: []api.ServicePort{
 					{
 						Port:     80,
@@ -938,13 +933,19 @@ func TestPrintHumanReadableWithNamespace(t *testing.T) {
 				ObjectMeta: api.ObjectMeta{Name: name, Namespace: namespaceName},
 				Spec: api.ServiceSpec{
 					PortalIP: "1.2.3.4",
-					PublicIPs: []string{
-						"2.3.4.5",
-					},
 					Ports: []api.ServicePort{
 						{
 							Port:     80,
 							Protocol: "TCP",
+						},
+					},
+				},
+				Status: api.ServiceStatus{
+					LoadBalancer: api.LoadBalancerStatus{
+						Ingress: []api.LoadBalancerIngress{
+							{
+								IP: "2.3.4.5",
+							},
 						},
 					},
 				},
