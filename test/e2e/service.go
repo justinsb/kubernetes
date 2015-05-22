@@ -952,7 +952,7 @@ func testReachable(ip string, port int) {
 
 	By(fmt.Sprintf("Checking reachability of %s", url))
 	for t := time.Now(); time.Since(t) < podStartTimeout; time.Sleep(5 * time.Second) {
-		resp, err = http.Get(url)
+		resp, err = httpGetNoConnectionPool(url)
 		if err == nil {
 			break
 		}
@@ -984,7 +984,7 @@ func testNotReachable(ip string, port int) {
 	}
 
 	for t := time.Now(); time.Since(t) < podStartTimeout; time.Sleep(5 * time.Second) {
-		resp, err = http.Get(url)
+		resp, err = httpGetNoConnectionPool(url)
 		if err != nil {
 			break
 		}
@@ -997,6 +997,19 @@ func testNotReachable(ip string, port int) {
 	}
 	// TODO: Check type of error
 	By(fmt.Sprintf("Found (expected) error during not-reachability test %v", err))
+}
+
+// Does an HTTP GET, but does not reuse TCP connections
+// This masks problems where the iptables rule has changed, but we don't see it
+func httpGetNoConnectionPool(url string) (*http.Response, error) {
+	tr := &http.Transport{
+		DisableKeepAlives: true,
+	}
+	client := &http.Client{
+		Transport: tr,
+	}
+
+	return client.Get(url)
 }
 
 // Simple helper class to avoid too much boilerplate in tests
