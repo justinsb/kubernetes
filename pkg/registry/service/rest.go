@@ -107,13 +107,13 @@ func (rs *REST) Create(ctx api.Context, obj runtime.Object) (runtime.Object, err
 		if servicePort.NodePort != 0 {
 			err := nodePortOp.Allocate(servicePort.NodePort)
 			if err != nil {
-				el := fielderrors.ValidationErrorList{fielderrors.NewFieldInvalid("spec.ports.nodePort", servicePort.NodePort, err.Error())}
+				el := fielderrors.ValidationErrorList{fielderrors.NewFieldInvalid("nodePort", servicePort.NodePort, err.Error())}.PrefixIndex(i).Prefix("spec.ports")
 				return nil, errors.NewInvalid("Service", service.Name, el)
 			}
 		} else if assignNodePorts {
 			nodePort, err := nodePortOp.AllocateNext()
 			if err != nil {
-				el := fielderrors.ValidationErrorList{fielderrors.NewFieldInvalid("spec.ports.nodePort", servicePort.NodePort, err.Error())}
+				el := fielderrors.ValidationErrorList{fielderrors.NewFieldInvalid("nodePort", servicePort.NodePort, err.Error())}.PrefixIndex(i).Prefix("spec.ports")
 				return nil, errors.NewInvalid("Service", service.Name, el)
 			}
 			servicePort.NodePort = nodePort
