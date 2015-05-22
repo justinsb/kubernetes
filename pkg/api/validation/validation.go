@@ -1089,7 +1089,7 @@ func ValidateService(service *api.Service) errs.ValidationErrorList {
 	if service.Spec.Type == api.ServiceTypeClusterIP {
 		for i := range service.Spec.Ports {
 			if service.Spec.Ports[i].NodePort != 0 {
-				allErrs = append(allErrs, errs.NewFieldInvalid("spec.ports", service.Spec.Ports[i], "cannot specify a node port with cluster-visibility services"))
+				allErrs = append(allErrs, errs.NewFieldInvalid("spec.ports", service.Spec.Ports[i], "cannot specify a node port with services of type ClusterIP"))
 			}
 		}
 	}
