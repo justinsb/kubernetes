@@ -442,8 +442,8 @@ var _ = Describe("Services", func() {
 		if len(service.Status.LoadBalancer.Ingress) != 1 {
 			Failf("got unexpected len(Status.LoadBalancer.Ingresss) for LoadBalancer service: %v", service)
 		}
-		ingress := service.Status.LoadBalancer.Ingress[0]
-		if ingress.IP == "" && ingress.Hostname == "" {
+		ingress1 := service.Status.LoadBalancer.Ingress[0]
+		if ingress1.IP == "" && ingress1.Hostname == "" {
 			Failf("got unexpected Status.LoadBalancer.Ingresss[0] for LoadBalancer service: %v", service)
 		}
 		By("hitting the pod through the service's NodePort")
@@ -475,10 +475,14 @@ var _ = Describe("Services", func() {
 		if len(service.Status.LoadBalancer.Ingress) != 1 {
 			Failf("got unexpected len(Status.LoadBalancer.Ingresss) for NodePort service: %v", service)
 		}
+		ingress2 := service.Status.LoadBalancer.Ingress
+		// TODO: This is a problem on AWS; we can't just always be changing the LB
+		Expect(ingress1).To(Equal(ingress2))
+
 		By("hitting the pod through the service's updated NodePort")
 		testReachable(ip, nodePort2)
 		By("hitting the pod through the service's LoadBalancer")
-		testLoadBalancerReachable(ingress, 80)
+		testLoadBalancerReachable(ingress2, 80)
 		By("checking the old NodePort is closed")
 		testNotReachable(ip, nodePort1)
 
