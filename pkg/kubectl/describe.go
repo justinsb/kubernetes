@@ -509,7 +509,7 @@ func describeService(service *api.Service, endpoints *api.Endpoints, events *api
 		fmt.Fprintf(out, "IP:\t%s\n", service.Spec.PortalIP)
 		if len(service.Status.LoadBalancer.Ingress) > 0 {
 			list := buildIngressString(service.Status.LoadBalancer.Ingress)
-			fmt.Fprintf(out, "Ingress:\t%s\n", list)
+			fmt.Fprintf(out, "LoadBalancer Ingress:\t%s\n", list)
 		}
 		for i := range service.Spec.Ports {
 			sp := &service.Spec.Ports[i]
