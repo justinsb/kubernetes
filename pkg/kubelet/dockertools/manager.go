@@ -32,6 +32,7 @@ import (
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/latest"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/v1"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client/record"
 	kubecontainer "github.com/GoogleCloudPlatform/kubernetes/pkg/kubelet/container"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/kubelet/lifecycle"
@@ -39,6 +40,7 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/kubelet/prober"
 	kubeletTypes "github.com/GoogleCloudPlatform/kubernetes/pkg/kubelet/types"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/probe"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/securitycontext"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/types"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
@@ -92,6 +94,9 @@ type DockerManager struct {
 	// Directory of container logs.
 	containerLogsDir string
 
+	// Directory of container metadata
+	containerMetadataDir string
+
 	// Network plugin.
 	networkPlugin network.NetworkPlugin
 
@@ -117,6 +122,7 @@ func NewDockerManager(
 	qps float32,
 	burst int,
 	containerLogsDir string,
+	containerMetadataDir string,
 	osInterface kubecontainer.OSInterface,
 	networkPlugin network.NetworkPlugin,
 	generator kubecontainer.RunContainerOptionsGenerator,
@@ -164,6 +170,7 @@ func NewDockerManager(
 		Puller:                 newDockerPuller(client, qps, burst),
 		dockerRoot:             dockerRoot,
 		containerLogsDir:       containerLogsDir,
+		containerMetadataDir:   containerMetadataDir,
 		networkPlugin:          networkPlugin,
 		prober:                 nil,
 		generator:              generator,
@@ -1230,7 +1237,32 @@ func (dm *DockerManager) runContainerInPod(pod *api.Pod, container *api.Containe
 	if err = dm.os.Symlink(containerLogFile, symlinkFile); err != nil {
 		glog.Errorf("Failed to create symbolic link to the log file of pod %q container %q: %v", podFullName, container.Name, err)
 	}
+
+	// Write file containing the pod data, so that local processes with suitable permissions can get rich information.
+	// The canonical example of this is labels for log collection, but metric colllection or other agents could end
+	// up using this also.
+	// Note that we cannot serialize the container data directly (it is not a runtime.Object), but
+	// the container name can be extracted from the filename (the container is part of the pod spec).
+	// This also avoids duplication.
+	podDataFile := path.Join(dm.containerMetadataDir, fmt.Sprintf("%s_%s-%s.log", podFullName, container.Name, id))
+	if err = writeDataFile(podDataFile, pod); err != nil {
+		glog.Errorf("Failed to create write pod to the data file of pod %q container %q: %v", podFullName, container.Name, err)
+	}
+
 	return kubeletTypes.DockerID(id), err
+}
+
+// Encodes item using the current API codec, and writes to filename
+func writeDataFile(filename string, item runtime.Object) error {
+	data, err := v1.Codec.Encode(item)
+	if err != nil {
+		return fmt.Errorf("error encoding item: %v", err)
+	}
+	err = ioutil.WriteFile(filename, data, 0644)
+	if err != nil {
+		return fmt.Errorf("error writing file %q: %v", filename, err)
+	}
+	return nil
 }
 
 // createPodInfraContainer starts the pod infra container for a pod. Returns the docker container ID of the newly created container.

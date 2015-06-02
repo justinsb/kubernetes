@@ -73,6 +73,9 @@ const (
 
 	// Location of container logs.
 	containerLogsDir = "/var/log/containers"
+
+	// Location of container metadata
+	containerMetadataDir = "/var/run/containers"
 )
 
 var (
@@ -274,6 +277,7 @@ func NewMainKubelet(
 			pullQPS,
 			pullBurst,
 			containerLogsDir,
+			containerMetadataDir,
 			osInterface,
 			klet.networkPlugin,
 			klet,
@@ -336,6 +340,13 @@ func NewMainKubelet(
 	if _, err := os.Stat(containerLogsDir); err != nil {
 		if err := osInterface.Mkdir(containerLogsDir, 0755); err != nil {
 			glog.Errorf("Failed to create directory %q: %v", containerLogsDir, err)
+		}
+	}
+
+	// If the container metadata directory does not exist, create it.
+	if _, err := os.Stat(containerMetadataDir); err != nil {
+		if err := osInterface.Mkdir(containerMetadataDir, 0755); err != nil {
+			glog.Errorf("Failed to create directory %q: %v", containerMetadataDir, err)
 		}
 	}
 

@@ -33,6 +33,7 @@ func NewFakeDockerManager(
 	qps float32,
 	burst int,
 	containerLogsDir string,
+	containerMetadataDir string,
 	osInterface kubecontainer.OSInterface,
 	networkPlugin network.NetworkPlugin,
 	generator kubecontainer.RunContainerOptionsGenerator,
@@ -40,7 +41,7 @@ func NewFakeDockerManager(
 	runtimeHooks kubecontainer.RuntimeHooks) *DockerManager {
 
 	dm := NewDockerManager(client, recorder, readinessManager, containerRefManager, podInfraContainerImage, qps,
-		burst, containerLogsDir, osInterface, networkPlugin, generator, httpClient, runtimeHooks)
+		burst, containerLogsDir, containerMetadataDir, osInterface, networkPlugin, generator, httpClient, runtimeHooks)
 	dm.Puller = &FakeDockerPuller{}
 	dm.prober = prober.New(nil, readinessManager, containerRefManager, recorder)
 	return dm
