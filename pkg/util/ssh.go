@@ -142,19 +142,19 @@ func (s *SSHTunnel) Close() error {
 	return nil
 }
 
-func RunSSHCommand(cmd, host string, signer ssh.Signer) (string, string, int, error) {
+func RunSSHCommand(cmd, user, host string, signer ssh.Signer) (string, string, int, error) {
 	// Setup the config, dial the server, and open a session.
 	config := &ssh.ClientConfig{
-		User: os.Getenv("USER"),
+		User: user,
 		Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
 	}
 	client, err := ssh.Dial("tcp", host, config)
 	if err != nil {
-		return "", "", 0, fmt.Errorf("error getting SSH client to host %s: '%v'", host, err)
+		return "", "", 0, fmt.Errorf("error getting SSH client to %s@%s: '%v'", user, host, err)
 	}
 	session, err := client.NewSession()
 	if err != nil {
-		return "", "", 0, fmt.Errorf("error creating session to host %s: '%v'", host, err)
+		return "", "", 0, fmt.Errorf("error creating session to %s@%s: '%v'", user, host, err)
 	}
 	defer session.Close()
 
@@ -174,7 +174,7 @@ func RunSSHCommand(cmd, host string, signer ssh.Signer) (string, string, int, er
 		} else {
 			// Some other kind of error happened (e.g. an IOError); consider the
 			// SSH unsuccessful.
-			err = fmt.Errorf("failed running `%s` on %s: '%v'", cmd, host, err)
+			err = fmt.Errorf("failed running `%s` on %s@%s: '%v'", cmd, user, host, err)
 		}
 	}
 	return bout.String(), berr.String(), code, err
