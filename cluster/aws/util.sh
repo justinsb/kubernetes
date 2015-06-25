@@ -55,7 +55,7 @@ MINION_SG_NAME="kubernetes-minion-${CLUSTER_ID}"
 # Be sure to map all the ephemeral drives.  We can specify more than we actually have.
 # TODO: Actually mount the correct number (especially if we have more), though this is non-trivial, and
 #  only affects the big storage instance types, which aren't a typical use case right now.
-BLOCK_DEVICE_MAPPINGS="{\"DeviceName\": \"/dev/sdc\",\"VirtualName\":\"ephemeral0\"},{\"DeviceName\": \"/dev/sdd\",\"VirtualName\":\"ephemeral1\"},{\"DeviceName\": \"/dev/sde\",\"VirtualName\":\"ephemeral2\"},{\"DeviceName\": \"/dev/sdf\",\"VirtualName\":\"ephemeral3\"}"
+BLOCK_DEVICE_MAPPINGS="[{\"DeviceName\": \"/dev/sdc\",\"VirtualName\":\"ephemeral0\"},{\"DeviceName\": \"/dev/sdd\",\"VirtualName\":\"ephemeral1\"},{\"DeviceName\": \"/dev/sde\",\"VirtualName\":\"ephemeral2\"},{\"DeviceName\": \"/dev/sdf\",\"VirtualName\":\"ephemeral3\"}]"
 
 function json_val {
     python -c 'import json,sys;obj=json.load(sys.stdin);print obj'$1''
@@ -358,6 +358,24 @@ function authorize-security-group-ingress {
       echo "Output: ${output}"
       exit 1
     fi
+  fi
+}
+
+# Get or creates master persistent volume
+# Sets MASTER_DISK_ID
+function ensure-master-pd {
+  local name=${MASTER_NAME}-pd
+  if [[ -z "${MASTER_DISK_ID}" ]]; then
+    MASTER_DISK_ID=`$AWS_CMD --output text describe-volumes \
+                             --filters Name=vpc-id,Values=${VPC_ID} \
+                                       Name=tag:Name,Values=${name} \
+                                       Name=tag:KubernetesCluster,Values=${CLUSTER_ID} \
+                             --query Volumes[].VolumeId`
+  fi
+  if [[ -z "${MASTER_DISK_ID}" ]]; then
+    MASTER_DISK_ID=`$AWS_CMD create-volume --availability-zone ${ZONE} --volume-type ${MASTER_DISK_TYPE} --size ${MASTER_DISK_SIZE} --query VolumeId --output text`
+    add-tag ${MASTER_DISK_ID} Name ${name}
+    add-tag ${MASTER_DISK_ID} KubernetesCluster ${CLUSTER_ID}
   fi
 }
 
@@ -724,8 +742,8 @@ function kube-up {
   # HTTPS to the master is allowed (for API access)
   authorize-security-group-ingress "${MASTER_SG_ID}" "--protocol tcp --port 443 --cidr 0.0.0.0/0"
 
-  master_volume_mapping="{\"DeviceName\": \"/dev/sdb\",\"Ebs\":{\"DeleteOnTermination\":false,\"VolumeSize\":${MASTER_DISK_SIZE},\"VolumeType\":\"${MASTER_DISK_TYPE}\"}}"
-  master_block_device_mappings="[${master_volume_mapping},${BLOCK_DEVICE_MAPPINGS}]"
+  # Get or create master persistent volume
+  ensure-master-pd
 
   (
     # We pipe this to the ami as a startup script in the user-data field.  Requires a compatible ami
@@ -776,11 +794,16 @@ function kube-up {
     --key-name ${AWS_SSH_KEY_NAME} \
     --security-group-ids ${MASTER_SG_ID} \
     --associate-public-ip-address \
-    --block-device-mappings "${master_block_device_mappings}" \
+    --block-device-mappings "${BLOCK_DEVICE_MAPPINGS}" \
     --user-data file://${KUBE_TEMP}/master-start.sh | json_val '["Instances"][0]["InstanceId"]')
   add-tag $master_id Name $MASTER_NAME
   add-tag $master_id Role $MASTER_TAG
   add-tag $master_id KubernetesCluster ${CLUSTER_ID}
+
+  # This is a race between instance start and volume attachment.  There appears to be no way to start an AWS instance with a volume attached.
+  # TODO: Wait for volume to be ready in setup-master-pd.sh
+  echo "Attaching peristent data volume to master"
+  $AWS_CMD --volume-id ${MASTER_DISK_ID} --device /dev/sdb --instance-id ${master_id}
 
   echo "Waiting for master to be ready"
 
@@ -813,16 +836,6 @@ function kube-up {
     attempt=$(($attempt+1))
     sleep 10
   done
-
-  # Master is ready, find the id of the root ebs device
-  # This assumes that the root device will be the first device listed in the response"
-  master_volume_id=$($AWS_CMD describe-instance-attribute \
-    --instance-id $master_id \
-    --attribute blockDeviceMapping | \
-    json_val '["BlockDeviceMappings"][0]["Ebs"]["VolumeId"]')
-
-  add-tag $master_volume_id Name ${MASTER_NAME}-pd
-  add-tag $master_volume_id KubernetesCluster ${CLUSTER_ID}
 
   # Check for SSH connectivity
   attempt=0
@@ -892,7 +905,7 @@ function kube-up {
       --key-name ${AWS_SSH_KEY_NAME} \
       --security-groups ${MINION_SG_ID} \
       ${public_ip_option} \
-      --block-device-mappings "[${BLOCK_DEVICE_MAPPINGS}]" \
+      --block-device-mappings "${BLOCK_DEVICE_MAPPINGS}" \
       --user-data "file://${KUBE_TEMP}/minion-user-data"
 
   echo "Creating autoscaling group"
