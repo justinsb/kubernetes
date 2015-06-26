@@ -66,6 +66,7 @@ else
 
   # Remove any existing mounts
   for block_device in ${block_devices}; do
+    echo "Unmounting ${block_device}"
     /bin/umount ${block_device}
     sed -i -e "\|^${block_device}|d" /etc/fstab
   done
@@ -81,6 +82,7 @@ else
       mkfs.btrfs -f --data raid0 ${block_devices[@]}
     fi
     echo "${block_devices[0]}  /mnt/ephemeral  btrfs  noatime  0 0" >> /etc/fstab
+    mkdir -p /mnt/ephemeral
     mount /mnt/ephemeral
 
     mkdir -p /mnt/ephemeral/kubernetes
@@ -94,6 +96,7 @@ else
 
     mkfs -t ext4 ${block_devices[0]}
     echo "${block_devices[0]}  /mnt/ephemeral  ext4     noatime  0 0" >> /etc/fstab
+    mkdir -p /mnt/ephemeral
     mount /mnt/ephemeral
 
     mkdir -p /mnt/ephemeral/kubernetes
