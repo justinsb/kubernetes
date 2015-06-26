@@ -27,6 +27,9 @@ ALLOCATE_NODE_CIDRS=true
 NODE_INSTANCE_PREFIX="${INSTANCE_PREFIX}-minion"
 ASG_NAME="${NODE_INSTANCE_PREFIX}-group"
 
+# We could allow the master disk volume id to be specified in future
+MASTER_DISK_ID=
+
 case "${KUBE_OS_DISTRIBUTION}" in
   ubuntu|wheezy|coreos)
     source "${KUBE_ROOT}/cluster/aws/${KUBE_OS_DISTRIBUTION}/util.sh"
@@ -361,18 +364,28 @@ function authorize-security-group-ingress {
   fi
 }
 
-# Get or creates master persistent volume
+# Gets master persistent volume, if exists
 # Sets MASTER_DISK_ID
-function ensure-master-pd {
+function find-master-pd {
   local name=${MASTER_NAME}-pd
   if [[ -z "${MASTER_DISK_ID}" ]]; then
     MASTER_DISK_ID=`$AWS_CMD --output text describe-volumes \
-                             --filters Name=vpc-id,Values=${VPC_ID} \
+                             --filters Name=availability-zone,Values=${ZONE} \
                                        Name=tag:Name,Values=${name} \
                                        Name=tag:KubernetesCluster,Values=${CLUSTER_ID} \
                              --query Volumes[].VolumeId`
   fi
+}
+
+# Gets or creates master persistent volume
+# Sets MASTER_DISK_ID
+function ensure-master-pd {
+  local name=${MASTER_NAME}-pd
+
+  find-master-pd
+
   if [[ -z "${MASTER_DISK_ID}" ]]; then
+    echo "Creating master disk: size ${MASTER_DISK_SIZE}GB, type ${MASTER_DISK_TYPE}"
     MASTER_DISK_ID=`$AWS_CMD create-volume --availability-zone ${ZONE} --volume-type ${MASTER_DISK_TYPE} --size ${MASTER_DISK_SIZE} --query VolumeId --output text`
     add-tag ${MASTER_DISK_ID} Name ${name}
     add-tag ${MASTER_DISK_ID} KubernetesCluster ${CLUSTER_ID}
@@ -777,8 +790,8 @@ function kube-up {
     echo "readonly KUBE_PROXY_TOKEN='${KUBE_PROXY_TOKEN}'"
     echo "readonly DOCKER_STORAGE='${DOCKER_STORAGE:-}'"
     grep -v "^#" "${KUBE_ROOT}/cluster/aws/templates/common.sh"
-    grep -v "^#" "${KUBE_ROOT}/cluster/aws/templates/setup-master-pd.sh"
     grep -v "^#" "${KUBE_ROOT}/cluster/aws/templates/format-disks.sh"
+    grep -v "^#" "${KUBE_ROOT}/cluster/aws/templates/setup-master-pd.sh"
     grep -v "^#" "${KUBE_ROOT}/cluster/aws/templates/create-dynamic-salt-files.sh"
     grep -v "^#" "${KUBE_ROOT}/cluster/aws/templates/download-release.sh"
     grep -v "^#" "${KUBE_ROOT}/cluster/aws/templates/salt-master.sh"
@@ -800,16 +813,10 @@ function kube-up {
   add-tag $master_id Role $MASTER_TAG
   add-tag $master_id KubernetesCluster ${CLUSTER_ID}
 
-  # This is a race between instance start and volume attachment.  There appears to be no way to start an AWS instance with a volume attached.
-  # TODO: Wait for volume to be ready in setup-master-pd.sh
-  echo "Attaching peristent data volume to master"
-  $AWS_CMD --volume-id ${MASTER_DISK_ID} --device /dev/sdb --instance-id ${master_id}
-
   echo "Waiting for master to be ready"
-
   local attempt=0
 
-   while true; do
+  while true; do
     echo -n Attempt "$(($attempt+1))" to check for master node
     local ip=$(get_instance_public_ip ${master_id})
     if [[ -z "${ip}" ]]; then
@@ -825,8 +832,14 @@ function kube-up {
       KUBE_MASTER_IP=$(assign-elastic-ip $ip $master_id)
       echo -e " ${color_green}[master running @${KUBE_MASTER_IP}]${color_norm}"
 
-      # We are not able to add a route to the instance until that instance is in "running" state.
+      # We are not able to add a route or volume to the instance until that instance is in "running" state.
       wait-for-instance-running $master_id
+
+      # This is a race between instance start and volume attachment.  There appears to be no way to start an AWS instance with a volume attached.
+      # TODO: Wait for volume to be ready in setup-master-pd.sh
+      echo "Attaching peristent data volume (${MASTER_DISK_ID}) to master"
+      $AWS_CMD attach-volume --volume-id ${MASTER_DISK_ID} --device /dev/sdb --instance-id ${master_id}
+
       sleep 10
       $AWS_CMD create-route --route-table-id $ROUTE_TABLE_ID --destination-cidr-block ${MASTER_IP_RANGE} --instance-id $master_id > $LOG
 
