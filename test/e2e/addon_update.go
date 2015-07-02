@@ -351,8 +351,13 @@ func getSSHClient() (*ssh.Client, error) {
 		return nil, fmt.Errorf("error getting signer for provider %s: '%v'", testContext.Provider, err)
 	}
 
+	user := os.Getenv("KUBE_SSH_USER")
+	if user == "" {
+		user = os.Getenv("USER")
+	}
+
 	config := &ssh.ClientConfig{
-		User: os.Getenv("USER"),
+		User: user,
 		Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
 	}
 
