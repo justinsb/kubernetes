@@ -34,6 +34,7 @@ base:
 
   'roles:kubernetes-master':
     - match: grain
+    - helpers
     - generate-cert
     - etcd
     - kube-apiserver

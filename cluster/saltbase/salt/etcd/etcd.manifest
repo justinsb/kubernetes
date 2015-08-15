@@ -1,3 +1,4 @@
+{% set etcd_volume_id=grains.get('etcd_volume_id', '') %}
 {
 "apiVersion": "v1",
 "kind": "Pod",
@@ -43,8 +44,16 @@
 ],
 "volumes":[
   { "name": "varetcd",
-    "hostPath": {
-        "path": "/mnt/master-pd/var/etcd"}
+{% if grains.cloud == 'aws' and grains.get('etcd_volume_id') -%}
+  "awsElasticBlockStore": {
+    "fsType": "ext4",
+    "volumeID": "{{etcd_volume_id}}"
+  }
+{% else %}
+  "hostPath": {
+    "path": "/mnt/master-pd/var/etcd"
+  }
+{% endif -%}
   },
   { "name": "varlogetcd",
     "hostPath": {

@@ -29,6 +29,7 @@ ASG_NAME="${NODE_INSTANCE_PREFIX}-group"
 
 # We could allow the master disk volume id to be specified in future
 MASTER_DISK_ID=
+ETCD_VOLUME_ID=
 
 # Defaults: ubuntu -> vivid
 if [[ "${KUBE_OS_DISTRIBUTION}" == "ubuntu" ]]; then
@@ -387,16 +388,31 @@ function authorize-security-group-ingress {
   fi
 }
 
-# Gets master persistent volume, if exists
-# Sets MASTER_DISK_ID
-function find-master-pd {
-  local name=${MASTER_NAME}-pd
-  if [[ -z "${MASTER_DISK_ID}" ]]; then
-    MASTER_DISK_ID=`$AWS_CMD --output text describe-volumes \
-                             --filters Name=availability-zone,Values=${ZONE} \
-                                       Name=tag:Name,Values=${name} \
-                                       Name=tag:KubernetesCluster,Values=${CLUSTER_ID} \
-                             --query Volumes[].VolumeId`
+# Gets named persistent volume, if exists
+function find-volume-by-name {
+  local name=$1
+  $AWS_CMD --output text describe-volumes \
+           --filters Name=availability-zone,Values=${ZONE} \
+                     Name=tag:Name,Values=${name} \
+                     Name=tag:KubernetesCluster,Values=${CLUSTER_ID} \
+           --query Volumes[].VolumeId
+}
+
+# Gets or creates persistent volume
+# Returns volume_id in VOLUME_ID
+VOLUME_ID=""
+function ensure-pd {
+  local name=$1
+  local size=$2
+  local volume_type=$3
+
+  VOLUME_ID=$(find-volume-by-name ${name})
+
+  if [[ -z "${VOLUME_ID}" ]]; then
+    echo "Creating disk ${name}: size ${size}GB, type ${volume_type}"
+    VOLUME_ID=`$AWS_CMD create-volume --availability-zone ${ZONE} --volume-type ${volume_type} --size ${size} --query VolumeId --output text`
+    add-tag ${VOLUME_ID} Name ${name}
+    add-tag ${VOLUME_ID} KubernetesCluster ${CLUSTER_ID}
   fi
 }
 
@@ -405,14 +421,17 @@ function find-master-pd {
 function ensure-master-pd {
   local name=${MASTER_NAME}-pd
 
-  find-master-pd
+  ensure-pd ${name} ${MASTER_DISK_SIZE} ${MASTER_DISK_TYPE}
+  MASTER_DISK_ID=${VOLUME_ID}
+}
 
-  if [[ -z "${MASTER_DISK_ID}" ]]; then
-    echo "Creating master disk: size ${MASTER_DISK_SIZE}GB, type ${MASTER_DISK_TYPE}"
-    MASTER_DISK_ID=`$AWS_CMD create-volume --availability-zone ${ZONE} --volume-type ${MASTER_DISK_TYPE} --size ${MASTER_DISK_SIZE} --query VolumeId --output text`
-    add-tag ${MASTER_DISK_ID} Name ${name}
-    add-tag ${MASTER_DISK_ID} KubernetesCluster ${CLUSTER_ID}
-  fi
+# Gets or creates etcd persistent volume
+# Sets ETCD_VOLUME_ID
+function ensure-etcd-pd {
+  local name=${MASTER_NAME}-etcd-pd
+
+  ensure-pd ${name} ${MASTER_DISK_SIZE} ${MASTER_DISK_TYPE}
+  ETCD_VOLUME_ID=${VOLUME_ID}
 }
 
 # Verify prereqs
@@ -788,6 +807,7 @@ function kube-up {
 
   # Get or create master persistent volume
   ensure-master-pd
+  ensure-etcd-pd
 
   # Determine extra certificate names for master
   octets=($(echo "$SERVICE_CLUSTER_IP_RANGE" | sed -e 's|/.*||' -e 's/\./ /g'))
@@ -828,6 +848,7 @@ function kube-up {
     echo "readonly KUBE_PROXY_TOKEN='${KUBE_PROXY_TOKEN}'"
     echo "readonly DOCKER_STORAGE='${DOCKER_STORAGE:-}'"
     echo "readonly MASTER_EXTRA_SANS='${MASTER_EXTRA_SANS:-}'"
+    echo "readonly ETCD_VOLUME_ID='${ETCD_VOLUME_ID:-}'"
     grep -v "^#" "${KUBE_ROOT}/cluster/aws/templates/common.sh"
     grep -v "^#" "${KUBE_ROOT}/cluster/aws/templates/format-disks.sh"
     grep -v "^#" "${KUBE_ROOT}/cluster/aws/templates/setup-master-pd.sh"

@@ -50,6 +50,12 @@ if [[ -n "${MASTER_EXTRA_SANS}" ]]; then
 EOF
 fi
 
+if [[ -n "${ETCD_VOLUME_ID}" ]]; then
+  cat <<EOF >>/etc/salt/minion.d/grains.conf
+  etcd_volume_id: '$(echo "$ETCD_VOLUME_ID" | sed -e "s/'/''/g")'
+EOF
+fi
+
 # Auto accept all keys from minions that try to join
 mkdir -p /etc/salt/master.d
 cat <<EOF >/etc/salt/master.d/auto-accept.conf
