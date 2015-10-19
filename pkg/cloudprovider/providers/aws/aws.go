@@ -146,7 +146,8 @@ type Volumes interface {
 	AttachDisk(instanceName string, volumeName string, readOnly bool) (string, error)
 	// Detach the disk from the specified instance
 	// instanceName can be empty to mean "the instance on which we are running"
-	DetachDisk(instanceName string, volumeName string) error
+	// Returns the device (e.g. /dev/xvdf) where the volume was attached
+	DetachDisk(instanceName string, volumeName string) (string, error)
 
 	// Create a volume with the specified options
 	CreateVolume(volumeOptions *VolumeOptions) (volumeName string, err error)
@@ -185,6 +186,8 @@ type AWSCloud struct {
 
 	mutex sync.Mutex
 }
+
+var _ Volumes = &AWSCloud{}
 
 type AWSCloudConfig struct {
 	Global struct {
