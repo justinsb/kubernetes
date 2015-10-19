@@ -17,21 +17,20 @@ limitations under the License.
 package aws_ebs
 
 import (
-	"fmt"
 	"os"
 	"path"
-	"path/filepath"
 	"strconv"
-	"strings"
 
+	"fmt"
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
-	aws_cloud "k8s.io/kubernetes/pkg/cloudprovider/providers/aws"
 	"k8s.io/kubernetes/pkg/types"
 	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume"
+	"path/filepath"
+	"strings"
 )
 
 // This is the primary entrypoint for volume plugins.
@@ -96,17 +95,17 @@ func (plugin *awsElasticBlockStorePlugin) newBuilderInternal(spec *volume.Spec, 
 
 	return &awsElasticBlockStoreBuilder{
 		awsElasticBlockStore: &awsElasticBlockStore{
-			podUID:   podUID,
-			volName:  spec.Name(),
-			volumeID: volumeID,
-			manager:  manager,
-			mounter:  mounter,
-			plugin:   plugin,
+			podUID:    podUID,
+			volName:   spec.Name(),
+			volumeID:  volumeID,
+			partition: partition,
+			mounter:   mounter,
+			manager:   manager,
+			plugin:    plugin,
 		},
 		fsType:      fsType,
-		partition:   partition,
 		readOnly:    readOnly,
-		diskMounter: &mount.SafeFormatAndMount{plugin.host.GetMounter(), exec.New()}}, nil
+		diskMounter: &mount.SafeFormatAndMount{mounter, exec.New()}}, nil
 }
 
 func (plugin *awsElasticBlockStorePlugin) NewCleaner(volName string, podUID types.UID) (volume.Cleaner, error) {
@@ -137,8 +136,10 @@ type ebsManager interface {
 type awsElasticBlockStore struct {
 	volName string
 	podUID  types.UID
-	// Unique id of the PD, used to find the disk resource in the provider.
+	// Unique identifier of the EBS volume, used to find the disk resource in the provider.
 	volumeID string
+	// Specifies the partition to mount
+	partition string
 	// Utility interface that provides API calls to the provider to attach/detach disks.
 	manager ebsManager
 	// Mounter interface that provides system calls to mount the global path to the pod local path.
@@ -153,22 +154,10 @@ func detachDiskLogError(ebs *awsElasticBlockStore) {
 	}
 }
 
-// getVolumeProvider returns the AWS Volumes interface
-func (ebs *awsElasticBlockStore) getVolumeProvider() (aws_cloud.Volumes, error) {
-	cloud := ebs.plugin.host.GetCloudProvider()
-	volumes, ok := cloud.(aws_cloud.Volumes)
-	if !ok {
-		return nil, fmt.Errorf("Cloud provider does not support volumes")
-	}
-	return volumes, nil
-}
-
 type awsElasticBlockStoreBuilder struct {
 	*awsElasticBlockStore
 	// Filesystem type, optional.
 	fsType string
-	// Specifies the partition to mount
-	partition string
 	// Specifies whether the disk will be attached as read-only.
 	readOnly bool
 	// diskMounter provides the interface that is used to mount the actual block device.
@@ -250,9 +239,11 @@ func makeGlobalPDPath(host volume.VolumeHost, volumeID string) string {
 	// Clean up the URI to be more fs-friendly
 	name := volumeID
 	name = strings.Replace(name, "://", "/", -1)
+
 	return path.Join(host.GetPluginDir(awsElasticBlockStorePluginName), "mounts", name)
 }
 
+// Reverses the mapping done in makeGlobalPDPath
 func getVolumeIDFromGlobalMount(host volume.VolumeHost, globalPath string) (string, error) {
 	basePath := path.Join(host.GetPluginDir(awsElasticBlockStorePluginName), "mounts")
 	rel, err := filepath.Rel(basePath, globalPath)
@@ -323,8 +314,7 @@ func (c *awsElasticBlockStoreCleaner) TearDownAt(dir string) error {
 			glog.V(2).Info("Could not determine volumeID from mountpoint ", refs[0], ": ", err)
 			return err
 		}
-		if err := c.manager.DetachDisk(&awsElasticBlockStoreCleaner{c.awsElasticBlockStore}); err != nil {
-			glog.V(2).Info("Error detaching disk ", c.volumeID, ": ", err)
+		if err := c.manager.DetachDisk(c); err != nil {
 			return err
 		}
 	} else {
