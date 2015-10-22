@@ -19,6 +19,7 @@ package priorities
 import (
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/algorithm"
 	schedulerapi "k8s.io/kubernetes/plugin/pkg/scheduler/api"
@@ -35,6 +36,22 @@ func NewSelectorSpreadPriority(serviceLister algorithm.ServiceLister, controller
 		controllerLister: controllerLister,
 	}
 	return selectorSpread.CalculateSpreadPriority
+}
+
+func getZoneId(node *api.Node) string {
+	labels := node.Labels
+	if labels == nil {
+		return ""
+	}
+
+	region, _ := labels[unversioned.Label_Zone_Region]
+	failureDomain, _ := labels[unversioned.Label_Zone_FailureDomain]
+
+	if region == "" && failureDomain == "" {
+		return ""
+	}
+
+	return region + ":" + failureDomain
 }
 
 // CalculateSpreadPriority spreads pods by minimizing the number of pods belonging to the same service or replication controller. It counts number of pods that run under
@@ -76,7 +93,8 @@ func (s *SelectorSpread) CalculateSpreadPriority(pod *api.Pod, podLister algorit
 		return nil, err
 	}
 
-	counts := map[string]int{}
+	maxCountByNodeName := 0
+	countsByNodeName := map[string]int{}
 	if len(nsPods) > 0 {
 		for _, pod := range nsPods {
 			matches := false
@@ -87,24 +105,62 @@ func (s *SelectorSpread) CalculateSpreadPriority(pod *api.Pod, podLister algorit
 				}
 			}
 			if matches {
-				counts[pod.Spec.NodeName]++
+				countsByNodeName[pod.Spec.NodeName]++
 				// Compute the maximum number of pods hosted on any node
-				if counts[pod.Spec.NodeName] > maxCount {
-					maxCount = counts[pod.Spec.NodeName]
+				if countsByNodeName[pod.Spec.NodeName] > maxCountByNodeName {
+					maxCountByNodeName = countsByNodeName[pod.Spec.NodeName]
 				}
 			}
+		}
+	}
+
+	maxCountByZone := 0
+	haveZones := false
+	countsByZone := map[string]int{}
+	for i := range nodes.Items {
+		node := &nodes.Items[i]
+
+		count, found := countsByNodeName[node.Name]
+		if !found {
+			continue
+		}
+
+		zoneId := getZoneId(node)
+		if zoneId == "" {
+			continue
+		}
+
+		haveZones = true
+		countsByZone[zoneId] += count
+		// Compute the maximum number of pods hosted in any zone
+		if countsByZone[zoneId] > maxCountByZone {
+			maxCountByZone = countsByZone[zoneId]
 		}
 	}
 
 	result := []schedulerapi.HostPriority{}
 	//score int - scale of 0-10
 	// 0 being the lowest priority and 10 being the highest
-	for _, node := range nodes.Items {
+	for i := range nodes.Items {
+		node := &nodes.Items[i]
 		// initializing to the default/max node score of 10
 		fScore := float32(10)
-		if maxCount > 0 {
-			fScore = 10 * (float32(maxCount-counts[node.Name]) / float32(maxCount))
+		if maxCountByNodeName > 0 {
+			fScore = 10 * (float32(maxCountByNodeName-countsByNodeName[node.Name]) / float32(maxCountByNodeName))
 		}
+
+		// If there is zone information present, incorporate it
+		if haveZones {
+			zoneId := getZoneId(node)
+			if zoneId != "" {
+				fScore += 20 * (float32(maxCountByZone-countsByZone[zoneId]) / float32(maxCountByZone))
+			}
+
+			// Give 2/3 of the weighting to zone spreading, 1/3 to node spreading
+			// TODO: Any way to justify this weighting?
+			fScore /= 3.0
+		}
+
 		result = append(result, schedulerapi.HostPriority{Host: node.Name, Score: int(fScore)})
 		glog.V(10).Infof(
 			"%v -> %v: SelectorSpreadPriority, Score: (%d)", pod.Name, node.Name, int(fScore),
