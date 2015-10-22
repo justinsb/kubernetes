@@ -376,8 +376,8 @@ func (os *Rackspace) Routes() (cloudprovider.Routes, bool) {
 	return nil, false
 }
 
-func (os *Rackspace) GetZone() (cloudprovider.Zone, error) {
+func (os *Rackspace) GetZone() (api.Zone, error) {
 	glog.V(1).Infof("Current zone is %v", os.region)
 
-	return cloudprovider.Zone{Region: os.region}, nil
+	return api.Zone{Region: os.region}, nil
 }

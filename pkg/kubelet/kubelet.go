@@ -2312,6 +2312,17 @@ func (kl *Kubelet) setNodeStatus(node *api.Node) error {
 			return fmt.Errorf("failed to get node address from cloud provider: %v", err)
 		}
 		node.Status.Addresses = nodeAddresses
+
+		zones, ok := kl.cloud.Zones()
+		if !ok {
+			node.Status.Zone = nil
+		} else {
+			zone, err := zones.GetZone()
+			if err != nil {
+				return fmt.Errorf("failed to get zone from cloud provider: %v", err)
+			}
+			node.Status.Zone = &zone
+		}
 	} else {
 		addr := net.ParseIP(kl.hostname)
 		if addr != nil {

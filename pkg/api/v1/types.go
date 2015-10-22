@@ -1795,6 +1795,14 @@ type NodeSystemInfo struct {
 	KubeProxyVersion string `json:"kubeProxyVersion"`
 }
 
+// Zone represents the location of a particular Node.
+type Zone struct {
+	// Items in the same failureDomain are expected to exhibit correlated failure
+	FailureDomain string `json:"failureDomain,omitempty"`
+	// Items in different regions are typically geographically separate and have high latencies between them.
+	Region string `json:"region,omitempty"`
+}
+
 // NodeStatus is information about the current status of a node.
 type NodeStatus struct {
 	// Capacity represents the available resources of a node.
@@ -1815,6 +1823,8 @@ type NodeStatus struct {
 	// Set of ids/uuids to uniquely identify the node.
 	// More info: http://releases.k8s.io/HEAD/docs/admin/node.md#node-info
 	NodeInfo NodeSystemInfo `json:"nodeInfo,omitempty"`
+	// Zone as reported by the cloud provider, if available
+	Zone *Zone `json:"zone,omitempty"`
 }
 
 type NodePhase string

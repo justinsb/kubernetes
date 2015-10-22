@@ -143,14 +143,8 @@ type Routes interface {
 
 var InstanceNotFound = errors.New("instance not found")
 
-// Zone represents the location of a particular machine.
-type Zone struct {
-	FailureDomain string
-	Region        string
-}
-
 // Zones is an abstract, pluggable interface for zone enumeration.
 type Zones interface {
 	// GetZone returns the Zone containing the current failure zone and locality region that the program is running in
-	GetZone() (Zone, error)
+	GetZone() (api.Zone, error)
 }

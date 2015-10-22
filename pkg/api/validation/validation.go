@@ -1463,6 +1463,7 @@ func ValidateNode(node *api.Node) errs.ValidationErrorList {
 
 // ValidateNodeUpdate tests to make sure a node update can be applied.  Modifies oldNode.
 func ValidateNodeUpdate(oldNode *api.Node, node *api.Node) errs.ValidationErrorList {
+	glog.Info("ValidateUpdate ", oldNode, " -> ", node)
 	allErrs := errs.ValidationErrorList{}
 	allErrs = append(allErrs, ValidateObjectMetaUpdate(&node.ObjectMeta, &oldNode.ObjectMeta).Prefix("metadata")...)
 
@@ -1472,7 +1473,7 @@ func ValidateNodeUpdate(oldNode *api.Node, node *api.Node) errs.ValidationErrorL
 	// 	allErrs = append(allErrs, errs.NewFieldInvalid("status", node.Status, "status must be empty"))
 	// }
 
-	// Validte no duplicate addresses in node status.
+	// Validate no duplicate addresses in node status.
 	addresses := make(map[api.NodeAddress]bool)
 	for _, address := range node.Status.Addresses {
 		if _, ok := addresses[address]; ok {
@@ -1486,6 +1487,8 @@ func ValidateNodeUpdate(oldNode *api.Node, node *api.Node) errs.ValidationErrorL
 	oldNode.ObjectMeta = node.ObjectMeta
 	// Allow users to update capacity
 	oldNode.Status.Capacity = node.Status.Capacity
+	// Allow users to update zone
+	oldNode.Status.Zone = node.Status.Zone
 	// Allow the controller manager to assign a CIDR to a node.
 	oldNode.Spec.PodCIDR = node.Spec.PodCIDR
 	// Allow users to unschedule node
@@ -1495,8 +1498,8 @@ func ValidateNodeUpdate(oldNode *api.Node, node *api.Node) errs.ValidationErrorL
 
 	// TODO: Add a 'real' ValidationError type for this error and provide print actual diffs.
 	if !api.Semantic.DeepEqual(oldNode, node) {
-		glog.V(4).Infof("Update failed validation %#v vs %#v", oldNode, node)
-		allErrs = append(allErrs, fmt.Errorf("update contains more than labels or capacity changes"))
+		glog.Infof("Update failed validation %#v vs %#v", oldNode, node)
+		allErrs = append(allErrs, fmt.Errorf("update contains more than labels, capacity or zone changes"))
 	}
 
 	return allErrs

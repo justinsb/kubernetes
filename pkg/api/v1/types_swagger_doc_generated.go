@@ -704,6 +704,7 @@ var map_NodeStatus = map[string]string{
 	"addresses":       "List of addresses reachable to the node. Queried from cloud provider, if available. More info: http://releases.k8s.io/HEAD/docs/admin/node.md#node-addresses",
 	"daemonEndpoints": "Endpoints of daemons running on the Node.",
 	"nodeInfo":        "Set of ids/uuids to uniquely identify the node. More info: http://releases.k8s.io/HEAD/docs/admin/node.md#node-info",
+	"zone":            "Zone as reported by the cloud provider, if available",
 }
 
 func (NodeStatus) SwaggerDoc() map[string]string {
@@ -1386,6 +1387,16 @@ var map_VolumeSource = map[string]string{
 
 func (VolumeSource) SwaggerDoc() map[string]string {
 	return map_VolumeSource
+}
+
+var map_Zone = map[string]string{
+	"":              "Zone represents the location of a particular Node.",
+	"failureDomain": "Items in the same failureDomain are expected to exhibit correlated failure",
+	"region":        "Items in different regions are typically geographically separate and have high latencies between them.",
+}
+
+func (Zone) SwaggerDoc() map[string]string {
+	return map_Zone
 }
 
 // AUTO-GENERATED FUNCTIONS END HERE

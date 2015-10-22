@@ -70,7 +70,7 @@ type ServiceController struct {
 	kubeClient       client.Interface
 	clusterName      string
 	balancer         cloudprovider.TCPLoadBalancer
-	zone             cloudprovider.Zone
+	zone             api.Zone
 	cache            *serviceCache
 	eventBroadcaster record.EventBroadcaster
 	eventRecorder    record.EventRecorder

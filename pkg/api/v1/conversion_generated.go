@@ -1431,6 +1431,14 @@ func autoconvert_api_NodeStatus_To_v1_NodeStatus(in *api.NodeStatus, out *NodeSt
 	if err := convert_api_NodeSystemInfo_To_v1_NodeSystemInfo(&in.NodeInfo, &out.NodeInfo, s); err != nil {
 		return err
 	}
+	if in.Zone != nil {
+		out.Zone = new(Zone)
+		if err := convert_api_Zone_To_v1_Zone(in.Zone, out.Zone, s); err != nil {
+			return err
+		}
+	} else {
+		out.Zone = nil
+	}
 	return nil
 }
 
@@ -3040,6 +3048,19 @@ func convert_api_VolumeSource_To_v1_VolumeSource(in *api.VolumeSource, out *Volu
 	return autoconvert_api_VolumeSource_To_v1_VolumeSource(in, out, s)
 }
 
+func autoconvert_api_Zone_To_v1_Zone(in *api.Zone, out *Zone, s conversion.Scope) error {
+	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
+		defaulting.(func(*api.Zone))(in)
+	}
+	out.FailureDomain = in.FailureDomain
+	out.Region = in.Region
+	return nil
+}
+
+func convert_api_Zone_To_v1_Zone(in *api.Zone, out *Zone, s conversion.Scope) error {
+	return autoconvert_api_Zone_To_v1_Zone(in, out, s)
+}
+
 func autoconvert_v1_AWSElasticBlockStoreVolumeSource_To_api_AWSElasticBlockStoreVolumeSource(in *AWSElasticBlockStoreVolumeSource, out *api.AWSElasticBlockStoreVolumeSource, s conversion.Scope) error {
 	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
 		defaulting.(func(*AWSElasticBlockStoreVolumeSource))(in)
@@ -4444,6 +4465,14 @@ func autoconvert_v1_NodeStatus_To_api_NodeStatus(in *NodeStatus, out *api.NodeSt
 	}
 	if err := convert_v1_NodeSystemInfo_To_api_NodeSystemInfo(&in.NodeInfo, &out.NodeInfo, s); err != nil {
 		return err
+	}
+	if in.Zone != nil {
+		out.Zone = new(api.Zone)
+		if err := convert_v1_Zone_To_api_Zone(in.Zone, out.Zone, s); err != nil {
+			return err
+		}
+	} else {
+		out.Zone = nil
 	}
 	return nil
 }
@@ -6057,6 +6086,19 @@ func convert_v1_VolumeSource_To_api_VolumeSource(in *VolumeSource, out *api.Volu
 	return autoconvert_v1_VolumeSource_To_api_VolumeSource(in, out, s)
 }
 
+func autoconvert_v1_Zone_To_api_Zone(in *Zone, out *api.Zone, s conversion.Scope) error {
+	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
+		defaulting.(func(*Zone))(in)
+	}
+	out.FailureDomain = in.FailureDomain
+	out.Region = in.Region
+	return nil
+}
+
+func convert_v1_Zone_To_api_Zone(in *Zone, out *api.Zone, s conversion.Scope) error {
+	return autoconvert_v1_Zone_To_api_Zone(in, out, s)
+}
+
 func init() {
 	err := api.Scheme.AddGeneratedConversionFuncs(
 		autoconvert_api_AWSElasticBlockStoreVolumeSource_To_v1_AWSElasticBlockStoreVolumeSource,
@@ -6177,6 +6219,7 @@ func init() {
 		autoconvert_api_VolumeMount_To_v1_VolumeMount,
 		autoconvert_api_VolumeSource_To_v1_VolumeSource,
 		autoconvert_api_Volume_To_v1_Volume,
+		autoconvert_api_Zone_To_v1_Zone,
 		autoconvert_v1_AWSElasticBlockStoreVolumeSource_To_api_AWSElasticBlockStoreVolumeSource,
 		autoconvert_v1_Binding_To_api_Binding,
 		autoconvert_v1_Capabilities_To_api_Capabilities,
@@ -6295,6 +6338,7 @@ func init() {
 		autoconvert_v1_VolumeMount_To_api_VolumeMount,
 		autoconvert_v1_VolumeSource_To_api_VolumeSource,
 		autoconvert_v1_Volume_To_api_Volume,
+		autoconvert_v1_Zone_To_api_Zone,
 	)
 	if err != nil {
 		// If one of the conversion functions is malformed, detect it immediately.

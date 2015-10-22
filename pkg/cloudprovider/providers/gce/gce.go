@@ -1418,12 +1418,12 @@ func (gce *GCECloud) DeleteRoute(clusterName string, route *cloudprovider.Route)
 	return gce.waitForGlobalOp(deleteOp)
 }
 
-func (gce *GCECloud) GetZone() (cloudprovider.Zone, error) {
+func (gce *GCECloud) GetZone() (api.Zone, error) {
 	region, err := getGceRegion(gce.zone)
 	if err != nil {
-		return cloudprovider.Zone{}, err
+		return api.Zone{}, err
 	}
-	return cloudprovider.Zone{
+	return api.Zone{
 		FailureDomain: gce.zone,
 		Region:        region,
 	}, nil

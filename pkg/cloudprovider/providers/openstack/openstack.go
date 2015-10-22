@@ -758,10 +758,10 @@ func (os *OpenStack) Zones() (cloudprovider.Zones, bool) {
 
 	return os, true
 }
-func (os *OpenStack) GetZone() (cloudprovider.Zone, error) {
+func (os *OpenStack) GetZone() (api.Zone, error) {
 	glog.V(1).Infof("Current zone is %v", os.region)
 
-	return cloudprovider.Zone{Region: os.region}, nil
+	return api.Zone{Region: os.region}, nil
 }
 
 func (os *OpenStack) Routes() (cloudprovider.Routes, bool) {

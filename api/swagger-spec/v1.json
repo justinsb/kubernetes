@@ -11820,6 +11820,10 @@
      "nodeInfo": {
       "$ref": "v1.NodeSystemInfo",
       "description": "Set of ids/uuids to uniquely identify the node. More info: http://releases.k8s.io/HEAD/docs/admin/node.md#node-info"
+     },
+     "zone": {
+      "$ref": "v1.Zone",
+      "description": "Zone as reported by the cloud provider, if available"
      }
     }
    },
@@ -11944,6 +11948,20 @@
      "kubeProxyVersion": {
       "type": "string",
       "description": "KubeProxy Version reported by the node."
+     }
+    }
+   },
+   "v1.Zone": {
+    "id": "v1.Zone",
+    "description": "Zone represents the location of a particular Node.",
+    "properties": {
+     "failureDomain": {
+      "type": "string",
+      "description": "Items in the same failureDomain are expected to exhibit correlated failure"
+     },
+     "region": {
+      "type": "string",
+      "description": "Items in different regions are typically geographically separate and have high latencies between them."
      }
     }
    },

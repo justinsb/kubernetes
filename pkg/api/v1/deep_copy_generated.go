@@ -1043,6 +1043,14 @@ func deepCopy_v1_NodeStatus(in NodeStatus, out *NodeStatus, c *conversion.Cloner
 	if err := deepCopy_v1_NodeSystemInfo(in.NodeInfo, &out.NodeInfo, c); err != nil {
 		return err
 	}
+	if in.Zone != nil {
+		out.Zone = new(Zone)
+		if err := deepCopy_v1_Zone(*in.Zone, out.Zone, c); err != nil {
+			return err
+		}
+	} else {
+		out.Zone = nil
+	}
 	return nil
 }
 
@@ -2304,6 +2312,12 @@ func deepCopy_v1_VolumeSource(in VolumeSource, out *VolumeSource, c *conversion.
 	return nil
 }
 
+func deepCopy_v1_Zone(in Zone, out *Zone, c *conversion.Cloner) error {
+	out.FailureDomain = in.FailureDomain
+	out.Region = in.Region
+	return nil
+}
+
 func deepCopy_runtime_RawExtension(in runtime.RawExtension, out *runtime.RawExtension, c *conversion.Cloner) error {
 	if in.RawJSON != nil {
 		out.RawJSON = make([]uint8, len(in.RawJSON))
@@ -2448,6 +2462,7 @@ func init() {
 		deepCopy_v1_Volume,
 		deepCopy_v1_VolumeMount,
 		deepCopy_v1_VolumeSource,
+		deepCopy_v1_Zone,
 		deepCopy_runtime_RawExtension,
 		deepCopy_util_IntOrString,
 	)

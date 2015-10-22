@@ -761,8 +761,8 @@ func (aws *AWSCloud) List(filter string) ([]string, error) {
 }
 
 // GetZone implements Zones.GetZone
-func (self *AWSCloud) GetZone() (cloudprovider.Zone, error) {
-	return cloudprovider.Zone{
+func (self *AWSCloud) GetZone() (api.Zone, error) {
+	return api.Zone{
 		FailureDomain: self.availabilityZone,
 		Region:        self.region,
 	}, nil
