@@ -298,12 +298,12 @@ func (factory *ConfigFactory) createNodeLW() *cache.ListWatch {
 
 // createPersistentVolumeLW returns a cache.ListWatch that gets all changes to persistentVolumes.
 func (factory *ConfigFactory) createPersistentVolumeLW() *cache.ListWatch {
-	return cache.NewListWatchFromClient(factory.Client, "persistentvolumes", api.NamespaceAll, parseSelectorOrDie(""))
+	return cache.NewListWatchFromClient(factory.Client, "persistentVolumes", api.NamespaceAll, parseSelectorOrDie(""))
 }
 
 // createPersistentVolumeClaimLW returns a cache.ListWatch that gets all changes to persistentVolumeClaims.
 func (factory *ConfigFactory) createPersistentVolumeClaimLW() *cache.ListWatch {
-	return cache.NewListWatchFromClient(factory.Client, "persistentvolumeclaims", api.NamespaceAll, parseSelectorOrDie(""))
+	return cache.NewListWatchFromClient(factory.Client, "persistentVolumeClaims", api.NamespaceAll, parseSelectorOrDie(""))
 }
 
 // Returns a cache.ListWatch that gets all changes to services.
