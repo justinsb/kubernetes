@@ -978,12 +978,21 @@ func (kl *Kubelet) initialNodeStatus() (*api.Node, error) {
 				return nil, fmt.Errorf("failed to get zone from cloud provider: %v", err)
 			}
 			if zone.FailureDomain != "" {
+<<<<<<< HEAD
 				glog.Infof("Adding node label from cloud provider: %s=%s", unversioned.LabelZoneFailureDomain, zone.FailureDomain)
 				node.ObjectMeta.Labels[unversioned.LabelZoneFailureDomain] = zone.FailureDomain
 			}
 			if zone.Region != "" {
 				glog.Infof("Adding node label from cloud provider: %s=%s", unversioned.LabelZoneRegion, zone.Region)
 				node.ObjectMeta.Labels[unversioned.LabelZoneRegion] = zone.Region
+=======
+				glog.Infof("Adding node label from cloud provider: %s=%s", unversioned.Label_Zone_FailureDomain, zone.FailureDomain)
+				node.ObjectMeta.Labels[unversioned.Label_Zone_FailureDomain] = zone.FailureDomain
+			}
+			if zone.Region != "" {
+				glog.Infof("Adding node label from cloud provider: %s=%s", unversioned.Label_Zone_Region, zone.Region)
+				node.ObjectMeta.Labels[unversioned.Label_Zone_Region] = zone.Region
+>>>>>>> Log when adding kubelet cloud labels
 			}
 		}
 	} else {
