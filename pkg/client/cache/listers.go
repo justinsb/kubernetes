@@ -380,3 +380,43 @@ func (s *StoreToJobLister) GetPodJobs(pod *api.Pod) (jobs []extensions.Job, err 
 	}
 	return
 }
+
+// Typed wrapper around a store of PersistentVolumes
+type StoreToPVFetcher struct {
+	Store
+}
+
+// GetPersistentVolumeInfo returns cached data for the PersistentVolume 'id'.
+func (s *StoreToPVFetcher) GetPersistentVolumeInfo(id string) (*api.PersistentVolume, error) {
+	o, exists, err := s.Get(&api.PersistentVolume{ObjectMeta: api.ObjectMeta{Name: id}})
+
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving PersistentVolume '%v' from cache: %v", id, err)
+	}
+
+	if !exists {
+		return nil, fmt.Errorf("PersistentVolume '%v' is not in cache", id)
+	}
+
+	return o.(*api.PersistentVolume), nil
+}
+
+// Typed wrapper around a store of PersistentVolumeClaims
+type StoreToPVCFetcher struct {
+	Store
+}
+
+// GetPersistentVolumeClaimInfo returns cached data for the PersistentVolumeClaim 'id'.
+func (s *StoreToPVCFetcher) GetPersistentVolumeClaimInfo(id string) (*api.PersistentVolumeClaim, error) {
+	o, exists, err := s.Get(&api.PersistentVolumeClaim{ObjectMeta: api.ObjectMeta{Name: id}})
+
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving PersistentVolumeClaim '%v' from cache: %v", id, err)
+	}
+
+	if !exists {
+		return nil, fmt.Errorf("PersistentVolumeClaim '%v' is not in cache", id)
+	}
+
+	return o.(*api.PersistentVolumeClaim), nil
+}

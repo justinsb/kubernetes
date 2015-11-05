@@ -53,6 +53,10 @@ type ConfigFactory struct {
 	PodLister algorithm.PodLister
 	// a means to list all nodes
 	NodeLister *cache.StoreToNodeLister
+	// a means to list all PersistentVolumes
+	PVLister *cache.StoreToPVFetcher
+	// a means to list all PersistentVolumeClaims
+	PVCLister *cache.StoreToPVCFetcher
 	// a means to list all services
 	ServiceLister *cache.StoreToServiceLister
 	// a means to list all controllers
@@ -75,6 +79,8 @@ func NewConfigFactory(client *client.Client, rateLimiter util.RateLimiter) *Conf
 		ScheduledPodLister: &cache.StoreToPodLister{},
 		// Only nodes in the "Ready" condition with status == "True" are schedulable
 		NodeLister:       &cache.StoreToNodeLister{Store: cache.NewStore(cache.MetaNamespaceKeyFunc)},
+		PVLister:         &cache.StoreToPVFetcher{Store: cache.NewStore(cache.MetaNamespaceKeyFunc)},
+		PVCLister:        &cache.StoreToPVCFetcher{Store: cache.NewStore(cache.MetaNamespaceKeyFunc)},
 		ServiceLister:    &cache.StoreToServiceLister{Store: cache.NewStore(cache.MetaNamespaceKeyFunc)},
 		ControllerLister: &cache.StoreToReplicationControllerLister{Store: cache.NewStore(cache.MetaNamespaceKeyFunc)},
 		StopEverything:   make(chan struct{}),
@@ -177,6 +183,8 @@ func (f *ConfigFactory) CreateFromKeys(predicateKeys, priorityKeys sets.String, 
 		// All fit predicates only need to consider schedulable nodes.
 		NodeLister: f.NodeLister.NodeCondition(getNodeConditionPredicate()),
 		NodeInfo:   f.NodeLister,
+		PVInfo:     f.PVLister,
+		PVCInfo:    f.PVCLister,
 	}
 	predicateFuncs, err := getFitPredicateFunctions(predicateKeys, pluginArgs)
 	if err != nil {
