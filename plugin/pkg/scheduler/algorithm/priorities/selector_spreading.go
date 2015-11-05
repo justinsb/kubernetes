@@ -38,7 +38,9 @@ func NewSelectorSpreadPriority(serviceLister algorithm.ServiceLister, controller
 	return selectorSpread.CalculateSpreadPriority
 }
 
-func getZoneId(node *api.Node) string {
+// Helper function that builds a string identifier that is unique per failure-zone
+// Returns empty-string for no zone
+func getZoneKey(node *api.Node) string {
 	labels := node.Labels
 	if labels == nil {
 		return ""
@@ -125,7 +127,7 @@ func (s *SelectorSpread) CalculateSpreadPriority(pod *api.Pod, podLister algorit
 			continue
 		}
 
-		zoneId := getZoneId(node)
+		zoneId := getZoneKey(node)
 		if zoneId == "" {
 			continue
 		}
@@ -151,7 +153,7 @@ func (s *SelectorSpread) CalculateSpreadPriority(pod *api.Pod, podLister algorit
 
 		// If there is zone information present, incorporate it
 		if haveZones {
-			zoneId := getZoneId(node)
+			zoneId := getZoneKey(node)
 			if zoneId != "" {
 				fScore += 20 * (float32(maxCountByZone-countsByZone[zoneId]) / float32(maxCountByZone))
 			}
