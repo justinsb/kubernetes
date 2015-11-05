@@ -19,14 +19,14 @@ package label
 import (
 	"testing"
 
+	"fmt"
 	"k8s.io/kubernetes/pkg/admission"
 	"k8s.io/kubernetes/pkg/api"
-	"fmt"
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/aws"
 )
 
 type mockVolumes struct {
-	volumeLabels map[string]string
+	volumeLabels      map[string]string
 	volumeLabelsError error
 }
 
@@ -53,11 +53,11 @@ func (v *mockVolumes) GetVolumeLabels(volumeName string) (map[string]string, err
 }
 
 func mockVolumeFailure(err error) *mockVolumes {
-	return &mockVolumes{volumeLabelsError: err }
+	return &mockVolumes{volumeLabelsError: err}
 }
 
 func mockVolumeLabels(labels map[string]string) *mockVolumes {
-	return &mockVolumes{volumeLabels: labels }
+	return &mockVolumes{volumeLabels: labels}
 }
 
 // TestAdmission

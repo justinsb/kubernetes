@@ -40,7 +40,7 @@ var _ = admission.Interface(&persistentVolumeLabel{})
 type persistentVolumeLabel struct {
 	*admission.Handler
 
-	mutex sync.Mutex
+	mutex      sync.Mutex
 	ebsVolumes aws.Volumes
 }
 
