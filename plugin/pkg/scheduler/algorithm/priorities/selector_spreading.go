@@ -46,8 +46,8 @@ func getZoneKey(node *api.Node) string {
 		return ""
 	}
 
-	region, _ := labels[unversioned.Label_Zone_Region]
-	failureDomain, _ := labels[unversioned.Label_Zone_FailureDomain]
+	region, _ := labels[unversioned.LabelZoneRegion]
+	failureDomain, _ := labels[unversioned.LabelZoneFailureDomain]
 
 	if region == "" && failureDomain == "" {
 		return ""

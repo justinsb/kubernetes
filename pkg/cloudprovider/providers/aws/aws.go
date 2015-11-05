@@ -1273,10 +1273,10 @@ func (c *AWSCloud) GetVolumeLabels(volumeName string) (map[string]string, error)
 	labels := make(map[string]string)
 	az := aws.StringValue(info.AvailabilityZone)
 	if az != "" {
-		labels[unversioned.Label_Zone_FailureDomain] = az
+		labels[unversioned.LabelZoneFailureDomain] = az
 		region := azToRegion(az)
 		if region != "" {
-			labels[unversioned.Label_Zone_Region] = region
+			labels[unversioned.LabelZoneRegion] = region
 		}
 	}
 	return labels, nil
