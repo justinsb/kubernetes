@@ -45,6 +45,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 )
 
 const ProviderName = "aws"
@@ -152,6 +153,9 @@ type Volumes interface {
 	// Create a volume with the specified options
 	CreateVolume(volumeOptions *VolumeOptions) (volumeName string, err error)
 	DeleteVolume(volumeName string) error
+
+	// Get labels to apply to volume on creation
+	GetVolumeLabels(volumeName string) (map[string]string, error)
 }
 
 // InstanceGroups is an interface for managing cloud-managed instance groups / autoscaling instance groups
@@ -504,6 +508,16 @@ func isRegionValid(region string) bool {
 	return false
 }
 
+// Derives the region from a valid az name.
+// Undefined if az not valid
+func azToRegion(az string) string {
+	if len(az) < 1 {
+		return ""
+	}
+	region := az[:len(az)-1]
+	return region
+}
+
 // newAWSCloud creates a new instance of AWSCloud.
 // AWSProvider and instanceId are primarily for tests
 func newAWSCloud(config io.Reader, awsServices AWSServices) (*AWSCloud, error) {
@@ -521,7 +535,7 @@ func newAWSCloud(config io.Reader, awsServices AWSServices) (*AWSCloud, error) {
 	if len(zone) <= 1 {
 		return nil, fmt.Errorf("invalid AWS zone in config file: %s", zone)
 	}
-	regionName := zone[:len(zone)-1]
+	regionName := azToRegion(zone)
 
 	valid := isRegionValid(regionName)
 	if !valid {
@@ -1244,6 +1258,28 @@ func (aws *AWSCloud) DeleteVolume(volumeName string) error {
 		return err
 	}
 	return awsDisk.deleteVolume()
+}
+
+// Implements Volumes.GetVolumeLabels
+func (c *AWSCloud) GetVolumeLabels(volumeName string) (map[string]string, error) {
+	awsDisk, err := newAWSDisk(c, volumeName)
+	if err != nil {
+		return nil, err
+	}
+	info, err := awsDisk.getInfo()
+	if err != nil {
+		return nil, err
+	}
+	labels := make(map[string]string)
+	az := aws.StringValue(info.AvailabilityZone)
+	if az != "" {
+		labels[unversioned.Label_Zone_FailureDomain] = az
+		region := azToRegion(az)
+		if region != "" {
+			labels[unversioned.Label_Zone_Region] = region
+		}
+	}
+	return labels, nil
 }
 
 func (v *AWSCloud) Configure(name string, spec *api.NodeSpec) error {
