@@ -132,8 +132,13 @@ type VolumeZoneChecker struct {
 }
 
 // VolumeZonePredicate evaluates if a pod can fit due to the volumes it requests, given
-// that some volumes may have zone scheduling constraints.  Currently this is only supported
-// with PersistentVolumeClaims, and looks to the labels on the bound PersistentVolume.
+// that some volumes may have zone scheduling constraints.  The requirement is that any
+// volume zone-labels must match the equivalent zone-labels on the node.  It is OK for
+// the node to have more zone-label constraints (for example, a hypothetical replicated
+// volume might allow region-wide access)
+//
+// Currently this is only supported with PersistentVolumeClaims, and looks to the labels
+// only on the bound PersistentVolume.
 func NewVolumeZonePredicate(nodeInfo NodeInfo, pvInfo PersistentVolumeInfo, pvcInfo PersistentVolumeClaimInfo) algorithm.FitPredicate {
 	c := &VolumeZoneChecker{
 		nodeInfo: nodeInfo,
@@ -149,7 +154,7 @@ func (c *VolumeZoneChecker) predicate(pod *api.Pod, existingPods []*api.Pod, nod
 		return false, err
 	}
 	if node == nil {
-		return false, fmt.Errorf("Node not found: %q", nodeID)
+		return false, fmt.Errorf("node not found: %q", nodeID)
 	}
 
 	nodeConstraints := make(map[string]string)
@@ -167,13 +172,16 @@ func (c *VolumeZoneChecker) predicate(pod *api.Pod, existingPods []*api.Pod, nod
 		return true, nil
 	}
 
+	glog.Infof("JSB VolumeZoneChecker found node constraints")
+
 	manifest := &(pod.Spec)
 	for i := range manifest.Volumes {
 		volume := &manifest.Volumes[i]
 		if volume.PersistentVolumeClaim != nil {
 			pvcName := volume.PersistentVolumeClaim.ClaimName
+			glog.Infof("JSB VolumeZoneChecker considering pvc %q", pvcName)
 			if pvcName == "" {
-				return false, fmt.Errorf("PersistentVolumeClaim had no name: %q", volume.Name)
+				return false, fmt.Errorf("PersistentVolumeClaim had no name: %q", pvcName)
 			}
 			pvc, err := c.pvcInfo.GetPersistentVolumeClaimInfo(pvcName)
 			if err != nil {
@@ -181,10 +189,11 @@ func (c *VolumeZoneChecker) predicate(pod *api.Pod, existingPods []*api.Pod, nod
 			}
 
 			if pvc == nil {
-				return false, fmt.Errorf("PersistentVolumeClaim not found: %q", pvcName)
+				return false, fmt.Errorf("PersistentVolumeClaim was not found: %q", pvcName)
 			}
 
 			pvName := pvc.Spec.VolumeName
+			glog.Infof("JSB VolumeZoneChecker considering pv %q", pvName)
 			if pvName == "" {
 				return false, fmt.Errorf("PersistentVolumeClaim is not bound: %q", pvcName)
 			}
@@ -202,14 +211,21 @@ func (c *VolumeZoneChecker) predicate(pod *api.Pod, existingPods []*api.Pod, nod
 				if k != unversioned.LabelZoneFailureDomain && k != unversioned.LabelZoneRegion {
 					continue
 				}
+				glog.Infof("JSB VolumeZoneChecker considering pv constraint %s=%s", k, v)
 				nodeV, _ := nodeConstraints[k]
+				glog.Infof("JSB VolumeZoneChecker nodev = %s", nodeV)
 				if v != nodeV {
-					glog.V(2).Info("Won't schedule pod %q onto node %q due to volume %q (mismatch on %q)", pod.Name, nodeID, pvName, k)
+					glog.Infof("JSB VolumeZoneChecker Won't schedule pod %q onto node %q due to volume %q (mismatch on %q)", pod.Name, nodeID, pvName, k)
+
+					glog.V(2).Infof("Won't schedule pod %q onto node %q due to volume %q (mismatch on %q)", pod.Name, nodeID, pvName, k)
 					return false, nil
 				}
 			}
 		}
 	}
+
+	glog.Infof("JSB VolumeZoneChecker will schedule pod %q onto node %q", pod.Name, nodeID)
+
 	return true, nil
 }
 

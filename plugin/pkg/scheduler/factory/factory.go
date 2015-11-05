@@ -206,6 +206,11 @@ func (f *ConfigFactory) CreateFromKeys(predicateKeys, priorityKeys sets.String, 
 	// Nodes may be listed frequently, so provide a local up-to-date cache.
 	cache.NewReflector(f.createNodeLW(), &api.Node{}, f.NodeLister.Store, 0).RunUntil(f.StopEverything)
 
+	// Watch PVs & PVCs
+	// They may be listed frequently for scheduling constraints, so provide a local up-to-date cache.
+	cache.NewReflector(f.createPersistentVolumeLW(), &api.PersistentVolume{}, f.PVLister.Store, 0).RunUntil(f.StopEverything)
+	cache.NewReflector(f.createPersistentVolumeClaimLW(), &api.PersistentVolumeClaim{}, f.PVCLister.Store, 0).RunUntil(f.StopEverything)
+
 	// Watch and cache all service objects. Scheduler needs to find all pods
 	// created by the same services or ReplicationControllers, so that it can spread them correctly.
 	// Cache this locally.
@@ -289,6 +294,16 @@ func (factory *ConfigFactory) createNodeLW() *cache.ListWatch {
 	// TODO: Filter out nodes that doesn't have NodeReady condition.
 	fields := fields.Set{client.NodeUnschedulable: "false"}.AsSelector()
 	return cache.NewListWatchFromClient(factory.Client, "nodes", api.NamespaceAll, fields)
+}
+
+// createPersistentVolumeLW returns a cache.ListWatch that gets all changes to persistentVolumes.
+func (factory *ConfigFactory) createPersistentVolumeLW() *cache.ListWatch {
+	return cache.NewListWatchFromClient(factory.Client, "persistentvolumes", api.NamespaceAll, parseSelectorOrDie(""))
+}
+
+// createPersistentVolumeClaimLW returns a cache.ListWatch that gets all changes to persistentVolumeClaims.
+func (factory *ConfigFactory) createPersistentVolumeClaimLW() *cache.ListWatch {
+	return cache.NewListWatchFromClient(factory.Client, "persistentvolumeclaims", api.NamespaceAll, parseSelectorOrDie(""))
 }
 
 // Returns a cache.ListWatch that gets all changes to services.
