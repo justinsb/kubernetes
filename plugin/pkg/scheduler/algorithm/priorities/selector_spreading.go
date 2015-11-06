@@ -100,7 +100,7 @@ func (s *SelectorSpread) CalculateSpreadPriority(pod *api.Pod, podLister algorit
 	if len(nsPods) > 0 {
 		for _, pod := range nsPods {
 			if pod.DeletionTimestamp != nil {
-				glog.V(2).Info("skipping pending-deleted pod: %s/%s", pod.Namespace, pod.Name)
+				glog.V(2).Infof("skipping pending-deleted pod: %s/%s", pod.Namespace, pod.Name)
 				continue
 			}
 			matches := false

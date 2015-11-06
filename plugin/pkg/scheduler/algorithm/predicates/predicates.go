@@ -37,7 +37,7 @@ type PersistentVolumeInfo interface {
 }
 
 type PersistentVolumeClaimInfo interface {
-	GetPersistentVolumeClaimInfo(pvcID string) (*api.PersistentVolumeClaim, error)
+	GetPersistentVolumeClaimInfo(namespace string, pvcID string) (*api.PersistentVolumeClaim, error)
 }
 
 type StaticNodeInfo struct {
@@ -174,6 +174,8 @@ func (c *VolumeZoneChecker) predicate(pod *api.Pod, existingPods []*api.Pod, nod
 
 	glog.Infof("JSB VolumeZoneChecker found node constraints")
 
+	namespace := pod.Namespace
+
 	manifest := &(pod.Spec)
 	for i := range manifest.Volumes {
 		volume := &manifest.Volumes[i]
@@ -183,7 +185,7 @@ func (c *VolumeZoneChecker) predicate(pod *api.Pod, existingPods []*api.Pod, nod
 			if pvcName == "" {
 				return false, fmt.Errorf("PersistentVolumeClaim had no name: %q", pvcName)
 			}
-			pvc, err := c.pvcInfo.GetPersistentVolumeClaimInfo(pvcName)
+			pvc, err := c.pvcInfo.GetPersistentVolumeClaimInfo(namespace, pvcName)
 			if err != nil {
 				return false, err
 			}

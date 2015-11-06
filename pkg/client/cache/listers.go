@@ -407,15 +407,14 @@ type StoreToPVCFetcher struct {
 }
 
 // GetPersistentVolumeClaimInfo returns cached data for the PersistentVolumeClaim 'id'.
-func (s *StoreToPVCFetcher) GetPersistentVolumeClaimInfo(id string) (*api.PersistentVolumeClaim, error) {
-	o, exists, err := s.Get(&api.PersistentVolumeClaim{ObjectMeta: api.ObjectMeta{Name: id}})
-
+func (s *StoreToPVCFetcher) GetPersistentVolumeClaimInfo(namespace string, id string) (*api.PersistentVolumeClaim, error) {
+	o, exists, err := s.Get(&api.PersistentVolumeClaim{ObjectMeta: api.ObjectMeta{Namespace: namespace, Name: id}})
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving PersistentVolumeClaim '%v' from cache: %v", id, err)
+		return nil, fmt.Errorf("error retrieving PersistentVolumeClaim '%s/%s' from cache: %v", namespace, id, err)
 	}
 
 	if !exists {
-		return nil, fmt.Errorf("PersistentVolumeClaim '%v' is not in cache", id)
+		return nil, fmt.Errorf("PersistentVolumeClaim '%s/%s' is not in cache", namespace, id)
 	}
 
 	return o.(*api.PersistentVolumeClaim), nil
