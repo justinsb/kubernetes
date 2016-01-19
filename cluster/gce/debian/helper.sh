@@ -31,11 +31,13 @@
 #   get-bearer-token
 #
 function create-master-instance {
+  local master_node_id=${1}
   local address_opt=""
-  [[ -n ${1:-} ]] && address_opt="--address ${1}"
+  [[ -n ${2:-} ]] && address_opt="--address ${2}"
 
-  write-master-env
-  gcloud compute instances create "${MASTER_NAME}" \
+  write-master-env ${master_node_id}
+
+  gcloud compute instances create "${MASTER_NAME_PREFIX}-${master_node_id}" \
     ${address_opt} \
     --project "${PROJECT}" \
     --zone "${ZONE}" \
@@ -47,8 +49,8 @@ function create-master-instance {
     --scopes "storage-ro,compute-rw,monitoring,logging-write" \
     --can-ip-forward \
     --metadata-from-file \
-      "startup-script=${KUBE_ROOT}/cluster/gce/configure-vm.sh,kube-env=${KUBE_TEMP}/master-kube-env.yaml" \
-    --disk "name=${MASTER_NAME}-pd,device-name=master-pd,mode=rw,boot=no,auto-delete=no"
+      "startup-script=${KUBE_ROOT}/cluster/gce/configure-vm.sh,kube-env=${KUBE_TEMP}/master-kube-env-${master_node_id}.yaml" \
+    --disk "name=${MASTER_NAME_PREFIX}-${master_node_id}-pd,device-name=master-pd,mode=rw,boot=no,auto-delete=no"
 }
 
 # $1: template name (required)

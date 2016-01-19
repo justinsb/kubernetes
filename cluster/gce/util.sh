@@ -43,6 +43,11 @@ KUBE_GCS_STAGING_PATH_SUFFIX=${KUBE_GCS_STAGING_PATH_SUFFIX-""}
 # How long (in seconds) to wait for cluster initialization.
 KUBE_CLUSTER_INITIALIZATION_TIMEOUT=${KUBE_CLUSTER_INITIALIZATION_TIMEOUT:-300}
 
+# In some places we aren't yet multi-master.
+# This variable tracks them!
+# TODO: Remove all usage
+MASTER_NAME_0="${MASTER_NAME_PREFIX}-0"
+
 function join_csv {
   local IFS=','; echo "$*";
 }
@@ -289,10 +294,10 @@ function detect-nodes () {
 #   KUBE_MASTER_IP
 function detect-master () {
   detect-project
-  KUBE_MASTER=${MASTER_NAME}
+  KUBE_MASTER="${MASTER_NAME_0}"
   if [[ -z "${KUBE_MASTER_IP-}" ]]; then
     KUBE_MASTER_IP=$(gcloud compute instances describe --project "${PROJECT}" --zone "${ZONE}" \
-      "${MASTER_NAME}" --fields networkInterfaces[0].accessConfigs[0].natIP \
+      "${MASTER_NAME_0}" --fields networkInterfaces[0].accessConfigs[0].natIP \
       --format=text | awk '{ print $2 }')
   fi
   if [[ -z "${KUBE_MASTER_IP-}" ]]; then
@@ -479,13 +484,15 @@ function yaml-quote {
 }
 
 function write-master-env {
+  local master_node_id=$1
+
   # If the user requested that the master be part of the cluster, set the
   # environment variable to program the master kubelet to register itself.
   if [[ "${REGISTER_MASTER_KUBELET:-}" == "true" ]]; then
-    KUBELET_APISERVER="${MASTER_NAME}"
+    KUBELET_APISERVER="${MASTER_NAME_0}"
   fi
 
-  build-kube-env true "${KUBE_TEMP}/master-kube-env.yaml"
+  build-kube-env true "${KUBE_TEMP}/master-kube-env-${master_node_id}.yaml" ${master_node_id}
 }
 
 function write-node-env {
@@ -527,7 +534,7 @@ function create-certs {
   local octets=($(echo "$SERVICE_CLUSTER_IP_RANGE" | sed -e 's|/.*||' -e 's/\./ /g'))
   ((octets[3]+=1))
   local -r service_ip=$(echo "${octets[*]}" | sed 's/ /./g')
-  local -r sans="IP:${cert_ip},IP:${service_ip},DNS:kubernetes,DNS:kubernetes.default,DNS:kubernetes.default.svc,DNS:kubernetes.default.svc.${DNS_DOMAIN},DNS:${MASTER_NAME}"
+  local -r sans="IP:${cert_ip},IP:${service_ip},DNS:kubernetes,DNS:kubernetes.default,DNS:kubernetes.default.svc,DNS:kubernetes.default.svc.${DNS_DOMAIN},DNS:${MASTER_NAME_0}"
 
   local -r cert_create_debug_output=$(mktemp "${KUBE_TEMP}/cert_create_debug_output.XXX")
   # Note: This was heavily cribbed from make-ca-cert.sh
@@ -538,7 +545,7 @@ function create-certs {
     cd easy-rsa-master/easyrsa3
     ./easyrsa init-pki
     ./easyrsa --batch "--req-cn=${cert_ip}@$(date +%s)" build-ca nopass
-    ./easyrsa --subject-alt-name="${sans}" build-server-full "${MASTER_NAME}" nopass
+    ./easyrsa --subject-alt-name="${sans}" build-server-full "${MASTER_NAME_PREFIX}" nopass
     ./easyrsa build-client-full kubelet nopass
     ./easyrsa build-client-full kubecfg nopass) &>${cert_create_debug_output} || {
     # If there was an error in the subshell, just die.
@@ -551,8 +558,8 @@ function create-certs {
   # By default, linux wraps base64 output every 76 cols, so we use 'tr -d' to remove whitespaces.
   # Note 'base64 -w0' doesn't work on Mac OS X, which has different flags.
   CA_CERT_BASE64=$(cat "${CERT_DIR}/pki/ca.crt" | base64 | tr -d '\r\n')
-  MASTER_CERT_BASE64=$(cat "${CERT_DIR}/pki/issued/${MASTER_NAME}.crt" | base64 | tr -d '\r\n')
-  MASTER_KEY_BASE64=$(cat "${CERT_DIR}/pki/private/${MASTER_NAME}.key" | base64 | tr -d '\r\n')
+  MASTER_CERT_BASE64=$(cat "${CERT_DIR}/pki/issued/${MASTER_NAME_PREFIX}.crt" | base64 | tr -d '\r\n')
+  MASTER_KEY_BASE64=$(cat "${CERT_DIR}/pki/private/${MASTER_NAME_PREFIX}.key" | base64 | tr -d '\r\n')
   KUBELET_CERT_BASE64=$(cat "${CERT_DIR}/pki/issued/kubelet.crt" | base64 | tr -d '\r\n')
   KUBELET_KEY_BASE64=$(cat "${CERT_DIR}/pki/private/kubelet.key" | base64 | tr -d '\r\n')
   KUBECFG_CERT_BASE64=$(cat "${CERT_DIR}/pki/issued/kubecfg.crt" | base64 | tr -d '\r\n')
@@ -620,7 +627,7 @@ function kube-up {
   fi
 
   echo "Starting master and configuring firewalls"
-  gcloud compute firewall-rules create "${MASTER_NAME}-https" \
+  gcloud compute firewall-rules create "${MASTER_NAME_PREFIX}-https" \
     --project "${PROJECT}" \
     --network "${NETWORK}" \
     --target-tags "${MASTER_TAG}" \
@@ -628,11 +635,13 @@ function kube-up {
 
   # We have to make sure the disk is created before creating the master VM, so
   # run this in the foreground.
-  gcloud compute disks create "${MASTER_NAME}-pd" \
+  for (( i=0; i<${NUM_MASTERS}; i++)); do
+   gcloud compute disks create "${MASTER_NAME_PREFIX}-${i}-pd" \
     --project "${PROJECT}" \
     --zone "${ZONE}" \
     --type "${MASTER_DISK_TYPE}" \
     --size "${MASTER_DISK_SIZE}"
+  done
 
   # Create disk for cluster registry if enabled
   if [[ "${ENABLE_CLUSTER_REGISTRY}" == true && -n "${CLUSTER_REGISTRY_DISK}" ]]; then
@@ -655,14 +664,20 @@ function kube-up {
   # so extract the region name, which is the same as the zone but with the final
   # dash and characters trailing the dash removed.
   local REGION=${ZONE%-*}
-  create-static-ip "${MASTER_NAME}-ip" "${REGION}"
-  MASTER_RESERVED_IP=$(gcloud compute addresses describe "${MASTER_NAME}-ip" \
+  for (( i=0; i<${NUM_MASTERS}; i++)); do
+   # TODO: Do we really need static IPs (if we have a load-balancer)?
+   create-static-ip "${MASTER_NAME_PREFIX}-${i}-ip" "${REGION}"
+
+   MASTER_RESERVED_IP=$(gcloud compute addresses describe "${MASTER_NAME_PREFIX}-${i}-ip" \
     --project "${PROJECT}" \
     --region "${REGION}" -q --format yaml | awk '/^address:/ { print $2 }')
 
-  create-certs "${MASTER_RESERVED_IP}"
+   if [[ ${i} == 0 ]]; then
+    create-certs "${MASTER_RESERVED_IP}"
+   fi
 
-  create-master-instance "${MASTER_RESERVED_IP}" &
+   create-master-instance "${i}" "${MASTER_RESERVED_IP}" &
+  done
 
   # Create a single firewall rule for all minions.
   create-firewall-rule "${NODE_TAG}-all" "${CLUSTER_IP_RANGE}" "${NODE_TAG}" &
@@ -882,23 +897,28 @@ function kube-down {
   fi
 
   # First delete the master (if it exists).
-  if gcloud compute instances describe "${MASTER_NAME}" --zone "${ZONE}" --project "${PROJECT}" &>/dev/null; then
+  # TODO: Use a instance group (maybe not managed)
+  for (( i=0; i<${NUM_MASTERS}; i++)); do
+   if gcloud compute instances describe "${MASTER_NAME_PREFIX}-${i}" --zone "${ZONE}" --project "${PROJECT}" &>/dev/null; then
     gcloud compute instances delete \
       --project "${PROJECT}" \
       --quiet \
       --delete-disks all \
       --zone "${ZONE}" \
-      "${MASTER_NAME}"
-  fi
+      "${MASTER_NAME_PREFIX}-${i}"
+   fi
+  done
 
   # Delete the master pd (possibly leaked by kube-up if master create failed).
-  if gcloud compute disks describe "${MASTER_NAME}"-pd --zone "${ZONE}" --project "${PROJECT}" &>/dev/null; then
+  for (( i=0; i<${NUM_MASTERS}; i++)); do
+   if gcloud compute disks describe "${MASTER_NAME_PREFIX}-${i}"-pd --zone "${ZONE}" --project "${PROJECT}" &>/dev/null; then
     gcloud compute disks delete \
       --project "${PROJECT}" \
       --quiet \
       --zone "${ZONE}" \
-      "${MASTER_NAME}"-pd
-  fi
+      "${MASTER_NAME_PREFIX}-${i}"-pd
+   fi
+  done
 
   # Delete disk for cluster registry if enabled
   if [[ "${ENABLE_CLUSTER_REGISTRY}" == true && -n "${CLUSTER_REGISTRY_DISK}" ]]; then
@@ -930,11 +950,11 @@ function kube-down {
   done
 
   # Delete firewall rule for the master.
-  if gcloud compute firewall-rules describe --project "${PROJECT}" "${MASTER_NAME}-https" &>/dev/null; then
+  if gcloud compute firewall-rules describe --project "${PROJECT}" "${MASTER_NAME_PREFIX}-https" &>/dev/null; then
     gcloud compute firewall-rules delete  \
       --project "${PROJECT}" \
       --quiet \
-      "${MASTER_NAME}-https"
+      "${MASTER_NAME_PREFIX}-https"
   fi
 
   # Delete firewall rule for minions.
@@ -966,13 +986,15 @@ function kube-down {
 
   # Delete the master's reserved IP
   local REGION=${ZONE%-*}
-  if gcloud compute addresses describe "${MASTER_NAME}-ip" --region "${REGION}" --project "${PROJECT}" &>/dev/null; then
+  for (( i=0; i<${NUM_MASTERS}; i++)); do
+   if gcloud compute addresses describe "${MASTER_NAME_PREFIX}-${i}-ip" --region "${REGION}" --project "${PROJECT}" &>/dev/null; then
     gcloud compute addresses delete \
       --project "${PROJECT}" \
       --region "${REGION}" \
       --quiet \
-      "${MASTER_NAME}-ip"
-  fi
+      "${MASTER_NAME_PREFIX}-${i}-ip"
+   fi
+  done
 
   export CONTEXT="${PROJECT}_${INSTANCE_PREFIX}"
   clear-kubeconfig
@@ -1020,15 +1042,19 @@ function check-resources {
     return 1
   fi
 
-  if gcloud compute instances describe --project "${PROJECT}" "${MASTER_NAME}" --zone "${ZONE}" &>/dev/null; then
-    KUBE_RESOURCE_FOUND="Kubernetes master ${MASTER_NAME}"
+  for (( i=0; i<${NUM_MASTERS}; i++)); do
+   if gcloud compute instances describe --project "${PROJECT}" "${MASTER_NAME_PREFIX}-${i}" --zone "${ZONE}" &>/dev/null; then
+    KUBE_RESOURCE_FOUND="Kubernetes master ${MASTER_NAME_PREFIX}-${i}"
     return 1
-  fi
+   fi
+  done
 
-  if gcloud compute disks describe --project "${PROJECT}" "${MASTER_NAME}"-pd --zone "${ZONE}" &>/dev/null; then
-    KUBE_RESOURCE_FOUND="Persistent disk ${MASTER_NAME}-pd"
+  for (( i=0; i<${NUM_MASTERS}; i++)); do
+   if gcloud compute disks describe --project "${PROJECT}" "${MASTER_NAME_PREFIX}-${i}"-pd --zone "${ZONE}" &>/dev/null; then
+    KUBE_RESOURCE_FOUND="Persistent disk ${MASTER_NAME_PREFIX}-${i}-pd"
     return 1
-  fi
+   fi
+  done
 
   if gcloud compute disks describe --project "${PROJECT}" "${CLUSTER_REGISTRY_DISK}" --zone "${ZONE}" &>/dev/null; then
     KUBE_RESOURCE_FOUND="Persistent disk ${CLUSTER_REGISTRY_DISK}"
@@ -1046,13 +1072,13 @@ function check-resources {
     return 1
   fi
 
-  if gcloud compute firewall-rules describe --project "${PROJECT}" "${MASTER_NAME}-https" &>/dev/null; then
-    KUBE_RESOURCE_FOUND="Firewall rules for ${MASTER_NAME}-https"
+  if gcloud compute firewall-rules describe --project "${PROJECT}" "${MASTER_NAME_PREFIX}-https" &>/dev/null; then
+    KUBE_RESOURCE_FOUND="Firewall rules for ${MASTER_NAME_PREFIX}-https"
     return 1
   fi
 
   if gcloud compute firewall-rules describe --project "${PROJECT}" "${NODE_TAG}-all" &>/dev/null; then
-    KUBE_RESOURCE_FOUND="Firewall rules for ${MASTER_NAME}-all"
+    KUBE_RESOURCE_FOUND="Firewall rules for ${NODE_TAG}-all"
     return 1
   fi
 
@@ -1065,11 +1091,12 @@ function check-resources {
   fi
 
   local REGION=${ZONE%-*}
-  if gcloud compute addresses describe --project "${PROJECT}" "${MASTER_NAME}-ip" --region "${REGION}" &>/dev/null; then
+  for (( i=0; i<${NUM_MASTERS}; i++)); do
+   if gcloud compute addresses describe --project "${PROJECT}" "${MASTER_NAME_PREFIX}-${i}-ip" --region "${REGION}" &>/dev/null; then
     KUBE_RESOURCE_FOUND="Master's reserved IP"
     return 1
-  fi
-
+   fi
+  done
   # No resources found.
   return 0
 }
@@ -1147,11 +1174,13 @@ function prepare-push() {
 # Push binaries to kubernetes master
 function push-master {
   echo "Updating master metadata ..."
-  write-master-env
-  add-instance-metadata-from-file "${KUBE_MASTER}" "kube-env=${KUBE_TEMP}/master-kube-env.yaml" "startup-script=${KUBE_ROOT}/cluster/gce/configure-vm.sh"
+  for (( i=0; i<${NUM_MASTERS}; i++)); do
+   write-master-env ${i}
+   add-instance-metadata-from-file "${MASTER_NAME_PREFIX}-${i}" "kube-env=${KUBE_TEMP}/master-kube-env-${i}.yaml" "startup-script=${KUBE_ROOT}/cluster/gce/configure-vm.sh"
 
-  echo "Pushing to master (log at ${OUTPUT}/push-${KUBE_MASTER}.log) ..."
-  cat ${KUBE_ROOT}/cluster/gce/configure-vm.sh | gcloud compute ssh --ssh-flag="-o LogLevel=quiet" --project "${PROJECT}" --zone "${ZONE}" "${KUBE_MASTER}" --command "sudo bash -s -- --push" &> ${OUTPUT}/push-"${KUBE_MASTER}".log
+   echo "Pushing to master (log at ${OUTPUT}/push-${MASTER_NAME_PREFIX}-${i}.log) ..."
+   cat ${KUBE_ROOT}/cluster/gce/configure-vm.sh | gcloud compute ssh --ssh-flag="-o LogLevel=quiet" --project "${PROJECT}" --zone "${ZONE}" "${MASTER_NAME_PREFIX}-${i}" --command "sudo bash -s -- --push" &> ${OUTPUT}/push-"${MASTER_NAME_PREFIX}-${i}".log
+  done
 }
 
 # Push binaries to kubernetes node
@@ -1334,6 +1363,7 @@ function build-runtime-config() {
 function build-kube-env {
   local master=$1
   local file=$2
+  local node_id=${3:-}
 
   build-runtime-config
 
@@ -1348,7 +1378,7 @@ SERVER_BINARY_TAR_HASH: $(yaml-quote ${SERVER_BINARY_TAR_HASH})
 SALT_TAR_URL: $(yaml-quote ${SALT_TAR_URL})
 SALT_TAR_HASH: $(yaml-quote ${SALT_TAR_HASH})
 SERVICE_CLUSTER_IP_RANGE: $(yaml-quote ${SERVICE_CLUSTER_IP_RANGE})
-KUBERNETES_MASTER_NAME: $(yaml-quote ${MASTER_NAME})
+KUBERNETES_MASTER_NAME: $(yaml-quote ${MASTER_NAME_0})
 ALLOCATE_NODE_CIDRS: $(yaml-quote ${ALLOCATE_NODE_CIDRS:-false})
 ENABLE_CLUSTER_MONITORING: $(yaml-quote ${ENABLE_CLUSTER_MONITORING:-none})
 ENABLE_L7_LOADBALANCING: $(yaml-quote ${ENABLE_L7_LOADBALANCING:-none})
@@ -1432,7 +1462,11 @@ ENABLE_MANIFEST_URL: $(yaml-quote ${ENABLE_MANIFEST_URL:-false})
 MANIFEST_URL: $(yaml-quote ${MANIFEST_URL:-})
 MANIFEST_URL_HEADER: $(yaml-quote ${MANIFEST_URL_HEADER:-})
 NUM_NODES: $(yaml-quote ${NUM_NODES})
+MASTER_NODE_ID: $(yaml-quote ${node_id})
+MASTER_NODE_COUNT: $(yaml-quote ${NUM_MASTERS})
+MASTER_NAME_PREFIX: $(yaml-quote "${MASTER_NAME_PREFIX}-")
 EOF
+
     if [ -n "${APISERVER_TEST_ARGS:-}" ]; then
       cat >>$file <<EOF
 APISERVER_TEST_ARGS: $(yaml-quote ${APISERVER_TEST_ARGS})

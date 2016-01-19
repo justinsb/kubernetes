@@ -288,7 +288,11 @@ manifest_url: '$(echo "$MANIFEST_URL" | sed -e "s/'/''/g")'
 manifest_url_header: '$(echo "$MANIFEST_URL_HEADER" | sed -e "s/'/''/g")'
 num_nodes: $(echo "${NUM_NODES}" | sed -e "s/'/''/g")
 e2e_storage_test_environment: '$(echo "$E2E_STORAGE_TEST_ENVIRONMENT" | sed -e "s/'/''/g")'
+master_node_id: '$(echo "$MASTER_NODE_ID" | sed -e "s/'/''/g")'
+master_node_count: '$(echo "$MASTER_NODE_COUNT" | sed -e "s/'/''/g")'
+master_name_prefix: '$(echo "$MASTER_NAME_PREFIX" | sed -e "s/'/''/g")'
 EOF
+
     if [ -n "${KUBELET_PORT:-}" ]; then
       cat <<EOF >>/srv/salt-overlay/pillar/cluster-params.sls
 kubelet_port: '$(echo "$KUBELET_PORT" | sed -e "s/'/''/g")'
