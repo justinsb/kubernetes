@@ -66,6 +66,9 @@ touch /var/log/etcd-events.log:
         port: 4001
         server_port: 2380
         cpulimit: '"200m"'
+        node_id: {{ pillar.get('master_node_id', 1) }}
+        node_count: {{ pillar.get('master_node_count', 1)|int }}
+        name_prefix: {{ pillar.get('master_name_prefix', '') }}
 
 # Switch on second etcd instance if there are more than 50 nodes.
 {% if pillar['num_nodes'] is defined and pillar['num_nodes'] > 50 -%}
@@ -83,4 +86,8 @@ touch /var/log/etcd-events.log:
         port: 4002
         server_port: 2381
         cpulimit: '"100m"'
+        node_id: {{ pillar.get('master_node_id', 1) }}
+        node_count: {{ pillar.get('master_node_count', 1)|int }}
+        name_prefix: {{ pillar.get('master_name_prefix', '') }}
+
 {% endif -%}

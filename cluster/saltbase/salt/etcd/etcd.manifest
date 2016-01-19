@@ -16,10 +16,34 @@
         "cpu": {{ cpulimit }}
       }
     },
+    "env": [
+      { "name": "ETCD_DATA_DIR", "value": "/var/etcd/data{{ suffix }}" },
+
+{% if node_count == 1 %}
+      { "name": "ETCD_LISTEN_PEER_URLS", "value": "http://127.0.0.1:{{ server_port }}" },
+      { "name": "ETCD_LISTEN_CLIENT_URLS", "value": "http://127.0.0.1:{{ port }}" },
+      { "name": "ETCD_ADVERTISE_CLIENT_URLS", "value": "http://127.0.0.1:{{ port }}" }}" },
+{% else %}
+      { "name": "ETCD_LISTEN_PEER_URLS", "value": "http://0.0.0.0:{{ server_port }}" },
+      { "name": "ETCD_LISTEN_CLIENT_URLS", "value": "http://0.0.0.0:{{ port }}" },
+      { "name": "ETCD_ADVERTISE_CLIENT_URLS", "value": "http://{{name_prefix}}{{node_id}}:{{ port }}" },
+      { "name": "ETCD_INITIAL_ADVERTISE_PEER_URLS", "value": "http://{{name_prefix}}{{node_id}}:{{ server_port }}" },
+
+{% set etcd_initial_cluster = [] %}
+{% for i in range(0, node_count): %}
+  {% do etcd_initial_cluster.append( "node-" ~ i ~ "=http://" ~ name_prefix ~ i ~ ":" ~ server_port ) %}
+{% endfor %}
+
+      { "name": "ETCD_INITIAL_CLUSTER", "value": "{{ etcd_initial_cluster|join(',') }}" },
+      { "name": "ETCD_INITIAL_CLUSTER_STATE", "value": "new" },
+      { "name": "ETCD_INITIAL_CLUSTER_TOKEN", "value": "etcd-cluster-{{suffix}}" },
+{% endif %}
+      { "name": "ETCD_NAME", "value": "node-{{ node_id }}" }
+    ],
     "command": [
               "/bin/sh",
               "-c",
-              "/usr/local/bin/etcd --listen-peer-urls http://127.0.0.1:{{ server_port }} --addr 127.0.0.1:{{ port }} --bind-addr 127.0.0.1:{{ port }} --data-dir /var/etcd/data{{ suffix }} 1>>/var/log/etcd{{ suffix }}.log 2>&1"
+              "/usr/local/bin/etcd 1>>/var/log/etcd{{ suffix }}.log 2>&1"
             ],
     "livenessProbe": {
       "httpGet": {
