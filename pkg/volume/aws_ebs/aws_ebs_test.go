@@ -69,11 +69,12 @@ func TestGetAccessModes(t *testing.T) {
 	if err != nil {
 		t.Errorf("Can't find the plugin by name")
 	}
+
 	if !contains(plug.GetAccessModes(), api.ReadWriteOnce) {
-		t.Errorf("Expected to find AccessMode:  %s", api.ReadWriteOnce)
+		t.Errorf("Expected to support AccessModeTypes:  %s", api.ReadWriteOnce)
 	}
-	if len(plug.GetAccessModes()) != 1 {
-		t.Errorf("Expected to find exactly one AccessMode")
+	if contains(plug.GetAccessModes(), api.ReadOnlyMany) {
+		t.Errorf("Expected not to support AccessModeTypes:  %s", api.ReadOnlyMany)
 	}
 }
 
@@ -86,25 +87,33 @@ func contains(modes []api.PersistentVolumeAccessMode, mode api.PersistentVolumeA
 	return false
 }
 
-type fakePDManager struct{}
+type fakePDManager struct {
+	attachCalled bool
+	detachCalled bool
+}
 
 // TODO(jonesdl) To fully test this, we could create a loopback device
 // and mount that instead.
 func (fake *fakePDManager) AttachAndMountDisk(b *awsElasticBlockStoreBuilder, globalPDPath string) error {
-	globalPath := makeGlobalPDPath(b.plugin.host, b.volumeID)
+	globalPath := makeGlobalPDName(b.plugin.host, b.volumeID)
 	err := os.MkdirAll(globalPath, 0750)
 	if err != nil {
 		return err
 	}
+	fake.attachCalled = true
+	// Simulate the global mount so that the fakeMounter returns the
+	// expected number of mounts for the attached disk.
+	b.mounter.Mount(globalPath, globalPath, b.fsType, nil)
 	return nil
 }
 
 func (fake *fakePDManager) DetachDisk(c *awsElasticBlockStoreCleaner) error {
-	globalPath := makeGlobalPDPath(c.plugin.host, c.volumeID)
+	globalPath := makeGlobalPDName(c.plugin.host, c.volumeID)
 	err := os.RemoveAll(globalPath)
 	if err != nil {
 		return err
 	}
+	fake.detachCalled = true
 	return nil
 }
 
@@ -122,7 +131,7 @@ func (fake *fakePDManager) DeleteVolume(cd *awsElasticBlockStoreDeleter) error {
 func TestPlugin(t *testing.T) {
 	tmpDir, err := ioutil.TempDir(os.TempDir(), "awsebsTest")
 	if err != nil {
-		t.Fatalf("can't make a temp dir: %v")
+		t.Fatalf("can't make a temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
 	plugMgr := volume.VolumePluginMgr{}
@@ -141,13 +150,16 @@ func TestPlugin(t *testing.T) {
 			},
 		},
 	}
-	builder, err := plug.(*awsElasticBlockStorePlugin).newBuilderInternal(volume.NewSpecFromVolume(spec), types.UID("poduid"), &fakePDManager{}, &mount.FakeMounter{})
+	fakeManager := &fakePDManager{}
+	fakeMounter := &mount.FakeMounter{}
+	builder, err := plug.(*awsElasticBlockStorePlugin).newBuilderInternal(volume.NewSpecFromVolume(spec), types.UID("poduid"), fakeManager, fakeMounter)
 	if err != nil {
 		t.Errorf("Failed to make a new Builder: %v", err)
 	}
 	if builder == nil {
 		t.Errorf("Got a nil Builder")
 	}
+
 	volPath := path.Join(tmpDir, "pods/poduid/volumes/kubernetes.io~aws-ebs/vol1")
 	path := builder.GetPath()
 	if path != volPath {
@@ -171,8 +183,12 @@ func TestPlugin(t *testing.T) {
 			t.Errorf("SetUp() failed: %v", err)
 		}
 	}
+	if !fakeManager.attachCalled {
+		t.Errorf("Attach watch not called")
+	}
 
-	cleaner, err := plug.(*awsElasticBlockStorePlugin).newCleanerInternal("vol1", types.UID("poduid"), &fakePDManager{}, &mount.FakeMounter{})
+	fakeManager = &fakePDManager{}
+	cleaner, err := plug.(*awsElasticBlockStorePlugin).newCleanerInternal("vol1", types.UID("poduid"), fakeManager, fakeMounter)
 	if err != nil {
 		t.Errorf("Failed to make a new Cleaner: %v", err)
 	}
@@ -188,9 +204,12 @@ func TestPlugin(t *testing.T) {
 	} else if !os.IsNotExist(err) {
 		t.Errorf("SetUp() failed: %v", err)
 	}
+	if !fakeManager.detachCalled {
+		t.Errorf("Detach watch not called")
+	}
 
 	// Test Provisioner
-	cap := resource.MustParse("100Gi")
+	cap := resource.MustParse("100Mi")
 	options := volume.VolumeOptions{
 		Capacity: cap,
 		AccessModes: []api.PersistentVolumeAccessMode{
@@ -281,39 +300,5 @@ func TestPersistentClaimReadOnlyFlag(t *testing.T) {
 
 	if !builder.GetAttributes().ReadOnly {
 		t.Errorf("Expected true for builder.IsReadOnly")
-	}
-}
-
-func TestBuilderAndCleanerTypeAssert(t *testing.T) {
-	tmpDir, err := ioutil.TempDir(os.TempDir(), "awsebsTest")
-	if err != nil {
-		t.Fatalf("can't make a temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-	plugMgr := volume.VolumePluginMgr{}
-	plugMgr.InitPlugins(ProbeVolumePlugins(), volume.NewFakeVolumeHost(tmpDir, nil, nil))
-
-	plug, err := plugMgr.FindPluginByName("kubernetes.io/aws-ebs")
-	if err != nil {
-		t.Errorf("Can't find the plugin by name")
-	}
-	spec := &api.Volume{
-		Name: "vol1",
-		VolumeSource: api.VolumeSource{
-			AWSElasticBlockStore: &api.AWSElasticBlockStoreVolumeSource{
-				VolumeID: "pd",
-				FSType:   "ext4",
-			},
-		},
-	}
-
-	builder, err := plug.(*awsElasticBlockStorePlugin).newBuilderInternal(volume.NewSpecFromVolume(spec), types.UID("poduid"), &fakePDManager{}, &mount.FakeMounter{})
-	if _, ok := builder.(volume.Cleaner); ok {
-		t.Errorf("Volume Builder can be type-assert to Cleaner")
-	}
-
-	cleaner, err := plug.(*awsElasticBlockStorePlugin).newCleanerInternal("vol1", types.UID("poduid"), &fakePDManager{}, &mount.FakeMounter{})
-	if _, ok := cleaner.(volume.Builder); ok {
-		t.Errorf("Volume Cleaner can be type-assert to Builder")
 	}
 }
