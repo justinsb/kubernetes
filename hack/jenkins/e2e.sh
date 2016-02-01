@@ -354,6 +354,26 @@ case ${JOB_NAME} in
     : ${FAIL_ON_GCP_RESOURCE_LEAK:="true"}
     ;;
 
+  # Runs all non-slow, non-serial, non-flaky tests on AWS in parallel.
+  kubernetes-e2e-aws)
+    : ${E2E_PUBLISH_GREEN_VERSION:=true}
+    : ${E2E_CLUSTER_NAME:="jenkins-aws-e2e"}
+    : ${E2E_ZONE:="us-west-2a"}
+    : ${ZONE:="us-west-2a"}
+    : ${E2E_NETWORK:="e2e-aws"}
+    # TODO(ihmccreery) remove [Skipped] once tests are relabeled
+    : ${GINKGO_TEST_ARGS:="--ginkgo.skip=\[Slow\]|\[Serial\]|\[Disruptive\]|\[Flaky\]|\[Feature:.+\]|\[Skipped\]"}
+    : ${GINKGO_PARALLEL:="y"}
+    : ${KUBE_GCE_INSTANCE_PREFIX="e2e-aws"}
+    : ${PROJECT:="k8s-jkns-e2e-aws"}
+    : ${ENABLE_DEPLOYMENTS:=true}
+    : ${AWS_CONFIG_FILE:='/var/lib/jenkins/.aws/credentials'}
+    : ${AWS_SSH_KEY:='/var/lib/jenkins/.ssh/kube_aws_rsa'}
+    : ${KUBE_SSH_USER:='ubuntu'}
+    # This is needed to be able to create PD from the e2e test
+    : ${AWS_SHARED_CREDENTIALS_FILE:='/var/lib/jenkins/.aws/credentials'}
+    ;;
+
   # Run the [Serial], [Disruptive], and [Feature:Restart] tests on GCE.
   kubernetes-e2e-gce-serial)
     : ${E2E_CLUSTER_NAME:="jenkins-gce-e2e-serial"}
@@ -495,21 +515,6 @@ case ${JOB_NAME} in
     : ${KUBE_SSH_USER:='ubuntu'}
     # This is needed to be able to create PD from the e2e test
     : ${AWS_SHARED_CREDENTIALS_FILE:='/var/lib/jenkins/.aws/credentials'}
-    ;;
-
-  # Runs all non-flaky tests on AWS in parallel.
-  kubernetes-e2e-aws-parallel)
-    : ${E2E_CLUSTER_NAME:="jenkins-aws-e2e-parallel"}
-    : ${E2E_NETWORK:="e2e-parallel"}
-    : ${GINKGO_PARALLEL:="y"}
-    : ${GINKGO_TEST_ARGS:="--ginkgo.skip=$(join_regex_allow_empty \
-          ${GCE_DEFAULT_SKIP_TESTS[@]:+${GCE_DEFAULT_SKIP_TESTS[@]}} \
-          ${GCE_PARALLEL_SKIP_TESTS[@]:+${GCE_PARALLEL_SKIP_TESTS[@]}} \
-          ${GCE_FLAKY_TESTS[@]:+${GCE_FLAKY_TESTS[@]}} \
-          )"}
-    : ${ENABLE_DEPLOYMENTS:=true}
-    # Override AWS defaults.
-    NUM_NODES=${NUM_NODES_PARALLEL}
     ;;
 
   # Feature jobs
