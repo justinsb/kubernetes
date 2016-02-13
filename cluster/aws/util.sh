@@ -300,47 +300,47 @@ function detect-trusty-image () {
   if [[ -z "${AWS_IMAGE-}" ]]; then
     case "${AWS_REGION}" in
       ap-northeast-1)
-        AWS_IMAGE=ami-93876e93
+        AWS_IMAGE=ami-2f615b41
         ;;
 
       ap-southeast-1)
-        AWS_IMAGE=ami-66546234
+        AWS_IMAGE=ami-d6509fb5
         ;;
 
       eu-central-1)
-        AWS_IMAGE=ami-e2a694ff
+        AWS_IMAGE=ami-56f4ec3a
         ;;
 
       eu-west-1)
-        AWS_IMAGE=ami-d7fd6ea0
+        AWS_IMAGE=ami-9c77c1ef
         ;;
 
       sa-east-1)
-        AWS_IMAGE=ami-a357eebe
+        AWS_IMAGE=ami-051b9b69
         ;;
 
       us-east-1)
-        AWS_IMAGE=ami-6089d208
+        AWS_IMAGE=ami-35d6f95f
         ;;
 
       us-west-1)
-        AWS_IMAGE=ami-cf7d998b
+        AWS_IMAGE=ami-06235566
         ;;
 
       cn-north-1)
-        AWS_IMAGE=ami-d436a4ed
+        AWS_IMAGE=ami-0679b06b
         ;;
 
       us-gov-west-1)
-        AWS_IMAGE=ami-01523322
+        AWS_IMAGE=ami-30b8da13
         ;;
 
       ap-southeast-2)
-        AWS_IMAGE=ami-cd4e3ff7
+        AWS_IMAGE=ami-93dafef0
         ;;
 
       us-west-2)
-        AWS_IMAGE=ami-3b14370b
+        AWS_IMAGE=ami-abc620cb
         ;;
 
       *)
