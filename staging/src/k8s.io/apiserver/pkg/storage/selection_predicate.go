@@ -78,6 +78,7 @@ type SelectionPredicate struct {
 	IndexFields          []string
 	Limit                int64
 	Continue             string
+	FieldSubset          []string
 }
 
 // Matches returns true if the given object's labels and fields (as

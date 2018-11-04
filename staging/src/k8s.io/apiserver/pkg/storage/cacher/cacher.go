@@ -335,10 +335,15 @@ func (c *Cacher) Watch(ctx context.Context, key string, resourceVersion string, 
 		chanSize = 1000
 	}
 
+	fieldSubset, err := buildFieldSubset(pred.FieldSubset)
+	if err != nil {
+		return nil, err
+	}
+
 	c.Lock()
 	defer c.Unlock()
 	forget := forgetWatcher(c, c.watcherIdx, triggerValue, triggerSupported)
-	watcher := newCacheWatcher(watchRV, chanSize, initEvents, filterWithAttrsFunction(key, pred), forget, c.versioner)
+	watcher := newCacheWatcher(watchRV, chanSize, initEvents, filterWithAttrsFunction(key, pred), fieldSubset, forget, c.versioner)
 
 	c.watchers.addWatcher(watcher, c.watcherIdx, triggerValue, triggerSupported)
 	c.watcherIdx++
@@ -784,17 +789,26 @@ type cacheWatcher struct {
 	stopped   bool
 	forget    func(bool)
 	versioner storage.Versioner
+
+	// fieldSubset allows for watching only changes to a subset of fields of interest
+	fieldSubset *fieldSubset
 }
 
-func newCacheWatcher(resourceVersion uint64, chanSize int, initEvents []*watchCacheEvent, filter filterWithAttrsFunc, forget func(bool), versioner storage.Versioner) *cacheWatcher {
+// fieldSubset specifies a subset of fields of interest
+type fieldSubset struct {
+	fields []string
+}
+
+func newCacheWatcher(resourceVersion uint64, chanSize int, initEvents []*watchCacheEvent, filter filterWithAttrsFunc, fieldSubset *fieldSubset, forget func(bool), versioner storage.Versioner) *cacheWatcher {
 	watcher := &cacheWatcher{
-		input:     make(chan *watchCacheEvent, chanSize),
-		result:    make(chan watch.Event, chanSize),
-		done:      make(chan struct{}),
-		filter:    filter,
-		stopped:   false,
-		forget:    forget,
-		versioner: versioner,
+		input:       make(chan *watchCacheEvent, chanSize),
+		result:      make(chan watch.Event, chanSize),
+		done:        make(chan struct{}),
+		filter:      filter,
+		stopped:     false,
+		forget:      forget,
+		versioner:   versioner,
+		fieldSubset: fieldSubset,
 	}
 	go watcher.process(initEvents, resourceVersion)
 	return watcher
@@ -881,7 +895,31 @@ func (c *cacheWatcher) sendWatchCacheEvent(event *watchCacheEvent) {
 	case curObjPasses && !oldObjPasses:
 		watchEvent = watch.Event{Type: watch.Added, Object: event.Object.DeepCopyObject()}
 	case curObjPasses && oldObjPasses:
+		if c.fieldSubset != nil {
+			prev := &objectWrapper{Object: event.PrevObject, Labels: event.PrevObjLabels}
+			new := &objectWrapper{Object: event.Object, Labels: event.ObjLabels}
+			didNotChange, err := c.fieldSubset.DidNotChange(prev, new)
+			if err != nil {
+				glog.Warningf("error from DidNotChange: %v", err)
+				// Assume a change
+			} else if didNotChange {
+				// Watcher is not interested in this change.
+
+				// TODO: Should we occasionally send a
+				// message to prevent the watcher
+				// falling so far behind that it can't
+				// resume a Watch.
+				//
+				// We could either send an update if it's been more than N seconds,
+				// or we could invent a new Event.Type (?)
+				return
+			}
+		}
 		watchEvent = watch.Event{Type: watch.Modified, Object: event.Object.DeepCopyObject()}
+		// TODO: Because we're deep copying the object, it
+		// would be easy to either selectively copy fields or
+		// zero-out unwanted fields here.  Maybe we make the
+		// distinction between `watchMask` and `fieldMask`
 	case !curObjPasses && oldObjPasses:
 		// return a delete event with the previous object content, but with the event's resource version
 		oldObj := event.PrevObject.DeepCopyObject()
@@ -989,4 +1027,79 @@ func (r *ready) set(ok bool) {
 	defer r.c.L.Unlock()
 	r.ok = ok
 	r.c.Broadcast()
+}
+
+// Builds a fieldSubset representing the subfields of interest, or returns nil if there is no filtering
+func buildFieldSubset(fields []string) (*fieldSubset, error) {
+	if len(fields) == 0 {
+		return nil, nil
+	}
+	return &fieldSubset{fields: fields}, nil
+}
+
+type objectWrapper struct {
+	Labels     map[string]string
+	Object     runtime.Object
+	MetaObject metav1.Object
+}
+
+func (o *objectWrapper) GetLabels() (map[string]string, error) {
+	if o.Labels == nil {
+		if o.MetaObject == nil {
+			accessor, err := meta.Accessor(o.Object)
+			if err != nil {
+				return nil, fmt.Errorf("error fetching accessor for %T: %v", o.Object, err)
+			}
+			o.MetaObject = accessor
+		}
+
+		o.Labels = o.MetaObject.GetLabels()
+	}
+	return o.Labels, nil
+}
+
+// DidNotChange checks if there was definitely no change to the observed fields.
+// We phrase it in the negative because we permit inaccurate implementations, as long as we err in the direction of sending more updates.
+func (s *fieldSubset) DidNotChange(old, new *objectWrapper) (bool, error) {
+	for _, f := range s.fields {
+		switch f {
+		case "metadata.name", "metadata.namespace", "metadata.uid":
+			// Well-known immutable fields
+			continue
+
+		case "metadata.labels":
+			{
+				oldLabels, err := old.GetLabels()
+				if err != nil {
+					return false, err
+				}
+				newLabels, err := new.GetLabels()
+				if err != nil {
+					return false, err
+				}
+				if !mapStringStringEquals(oldLabels, newLabels) {
+					// Actual change
+					return false, nil
+				}
+			}
+
+		default:
+			glog.Warningf("field change detection not implemented for %s, assuming change", f)
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func mapStringStringEquals(l, r map[string]string) bool {
+	if len(l) != len(r) {
+		return false
+	}
+	for k, v := range l {
+		if v != r[k] {
+			return false
+		}
+	}
+	return true
 }
