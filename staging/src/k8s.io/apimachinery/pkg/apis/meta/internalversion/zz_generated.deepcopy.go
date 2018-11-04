@@ -74,6 +74,11 @@ func (in *ListOptions) DeepCopyInto(out *ListOptions) {
 		*out = new(int64)
 		**out = **in
 	}
+	if in.FieldSubset != nil {
+		in, out := &in.FieldSubset, &out.FieldSubset
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 
