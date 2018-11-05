@@ -438,7 +438,9 @@ message ListOptions {
   optional string continue = 8;
 
   // A subset of fields of interest
-  repeated string fieldSubset = 9;
+  repeated string fieldMask = 9;
+
+  repeated string watchMask = 10;
 }
 
 // MicroTime is version of Time with microsecond level precision.
