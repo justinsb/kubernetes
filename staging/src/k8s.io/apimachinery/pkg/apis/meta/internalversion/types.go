@@ -57,9 +57,9 @@ type ListOptions struct {
 	// it has expired.
 	Continue string
 	// A subset of fields of interest.  A watch will only send updates if one of these fields has changed.
-	// TODO: Name is not ideal... maybe `fieldMask` or `watchMask`.
-	// Also, do we want a separate concept for the fields we want to fetch, vs the fields we want to trigger notifications.
-	FieldSubset []string
+	// TODO: Do we want a separate concept for the fields we want to fetch, vs the fields we want to trigger notifications.
+	FieldMask []string
+	WatchMask []string
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

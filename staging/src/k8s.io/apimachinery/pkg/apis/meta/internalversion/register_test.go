@@ -34,7 +34,8 @@ func TestListOptions(t *testing.T) {
 		ResourceVersion: "10",
 		TimeoutSeconds:  &ten,
 		Watch:           true,
-		FieldSubset:     []string{"metadata.name", "metadata.labels"},
+		FieldMask:       []string{"metadata.resourceVersion", "metadata.name", "metadata.labels"},
+		WatchMask:       []string{"metadata.labels"},
 	}
 	out := &ListOptions{}
 	if err := scheme.Convert(in, out, nil); err != nil {
@@ -68,13 +69,13 @@ func TestListOptions(t *testing.T) {
 	}
 
 	actual = &metav1.ListOptions{}
-	if err := ParameterCodec.DecodeParameters(url.Values{"watch": []string{"1"}, "fieldSubset": []string{"metadata.name", "metadata.labels"}}, metav1.SchemeGroupVersion, actual); err != nil {
+	if err := ParameterCodec.DecodeParameters(url.Values{"watch": []string{"1"}, "fieldMask": []string{"metadata.name", "metadata.labels"}}, metav1.SchemeGroupVersion, actual); err != nil {
 		t.Fatal(err)
 	}
 	if !actual.Watch {
 		t.Errorf("unexpected watch decode (watch): %#v", actual)
 	}
-	if !reflect.DeepEqual(actual.FieldSubset, []string{"metadata.name", "metadata.labels"}) {
+	if !reflect.DeepEqual(actual.FieldMask, []string{"metadata.name", "metadata.labels"}) {
 		t.Errorf("unexpected watch decode (fieldSubset): %#v", actual)
 	}
 

@@ -1167,7 +1167,8 @@ func (e *Store) Watch(ctx context.Context, options *metainternalversion.ListOpti
 	}
 	predicate := e.PredicateFunc(label, field)
 
-	predicate.FieldSubset = options.FieldSubset
+	predicate.FieldMask = options.FieldMask
+	predicate.WatchMask = options.WatchMask
 	resourceVersion := ""
 	if options != nil {
 		resourceVersion = options.ResourceVersion
