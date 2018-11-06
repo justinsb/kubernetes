@@ -113,8 +113,7 @@ var _ = SIGDescribe("Network Partition [Disruptive] [Slow]", func() {
 		_, err := framework.GetPodsInNamespace(c, ns, map[string]string{})
 		Expect(err).NotTo(HaveOccurred())
 
-		// TODO(foxish): Re-enable testing on gce after kubernetes#56787 is fixed.
-		framework.SkipUnlessProviderIs("gke", "aws")
+		framework.SkipUnlessProviderIs("gce", "gke", "aws")
 		if strings.Index(framework.TestContext.CloudConfig.NodeInstanceGroup, ",") >= 0 {
 			framework.Failf("Test dose not support cluster setup with more than one MIG: %s", framework.TestContext.CloudConfig.NodeInstanceGroup)
 		}
@@ -352,8 +351,7 @@ var _ = SIGDescribe("Network Partition [Disruptive] [Slow]", func() {
 		headlessSvcName := "test"
 
 		BeforeEach(func() {
-			// TODO(foxish): Re-enable testing on gce after kubernetes#56787 is fixed.
-			framework.SkipUnlessProviderIs("gke")
+			framework.SkipUnlessProviderIs("gke", "gce")
 			By("creating service " + headlessSvcName + " in namespace " + f.Namespace.Name)
 			headlessService := framework.CreateServiceSpec(headlessSvcName, "", true, labels)
 			_, err := f.ClientSet.CoreV1().Services(f.Namespace.Name).Create(headlessService)
