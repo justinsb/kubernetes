@@ -45,6 +45,7 @@ go_library(
         "//vendor/github.com/mxk/go-flowrate/flowrate:go_default_library",
         "//vendor/golang.org/x/net/html:go_default_library",
         "//vendor/golang.org/x/net/html/atom:go_default_library",
+        "//vendor/golang.org/x/net/proxy:go_default_library",
     ],
 )
 

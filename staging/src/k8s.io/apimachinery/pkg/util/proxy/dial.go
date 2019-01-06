@@ -25,26 +25,81 @@ import (
 	"net/url"
 
 	"github.com/golang/glog"
+	"golang.org/x/net/proxy"
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/third_party/forked/golang/netutil"
 )
 
-func DialURL(ctx context.Context, url *url.URL, transport http.RoundTripper) (net.Conn, error) {
-	dialAddr := netutil.CanonicalAddr(url)
+type dialFuncToProxyDialer struct {
+	dialFunc utilnet.DialFunc
+}
+
+func (d *dialFuncToProxyDialer) Dial(network, addr string) (net.Conn, error) {
+	ctx := context.TODO()
+	return d.dialFunc(ctx, network, addr)
+}
+
+//type DialFunc func(ctx context.Context, net, addr string) (net.Conn, error)
+
+func addProxyToDialer(dialer utilnet.DialFunc, proxyURL *url.URL) (utilnet.DialFunc, error) {
+	if proxyURL == nil {
+		return dialer, nil
+	}
+	proxyDialer := &dialFuncToProxyDialer{dialFunc: dialer}
+	proxied, err := proxy.FromURL(proxyURL, proxyDialer)
+	if err != nil {
+		return nil, fmt.Errorf("error building proxied dialer: %v", err)
+	}
+	return func(ctx context.Context, network string, addr string) (net.Conn, error) {
+		return proxied.Dial(network, addr)
+	}, nil
+}
+
+func DialURL(ctx context.Context, req *http.Request, transport http.RoundTripper) (net.Conn, error) {
+	reqURL := req.URL
+	glog.Infof("DialURL url=%+v transport=%+v", reqURL, transport)
+
+	dialAddr := netutil.CanonicalAddr(reqURL)
 
 	dialer, err := utilnet.DialerFor(transport)
 	if err != nil {
-		glog.V(5).Infof("Unable to unwrap transport %T to get dialer: %v", transport, err)
+		glog.Infof("Unable to unwrap transport %T to get dialer: %v", transport, err)
 	}
 
-	switch url.Scheme {
-	case "http":
-		if dialer != nil {
-			return dialer(ctx, "tcp", dialAddr)
+	var proxyURL *url.URL
+	switch transport := transport.(type) {
+	case *http.Transport:
+		if transport.Proxy == nil {
+			glog.Infof("is http.Transport but proxy is nil")
+		} else {
+			p, err := transport.Proxy(req)
+			if err != nil {
+				return nil, fmt.Errorf("error getting proxy for request: %v", err)
+			}
+			proxyURL = p
 		}
-		var d net.Dialer
-		return d.DialContext(ctx, "tcp", dialAddr)
+	default:
+		glog.Infof("unexpected transport type %T %v", transport, transport)
+	}
+
+	if proxyURL != nil {
+		glog.Infof("using ProxyURL=%+v", *proxyURL)
+	}
+
+	switch reqURL.Scheme {
+	case "http":
+		if dialer == nil {
+			var d net.Dialer
+			dialer = d.DialContext
+		}
+
+		dialer, err = addProxyToDialer(dialer, proxyURL)
+		if err != nil {
+			return nil, err
+		}
+
+		return dialer(ctx, "tcp", dialAddr)
 	case "https":
 		// Get the tls config from the transport if we recognize it
 		var tlsConfig *tls.Config
@@ -55,7 +110,17 @@ func DialURL(ctx context.Context, url *url.URL, transport http.RoundTripper) (ne
 			glog.V(5).Infof("Unable to unwrap transport %T to get at TLS config: %v", transport, err)
 		}
 
+		if dialer == nil {
+			var d net.Dialer
+			dialer = d.DialContext
+		}
+
 		if dialer != nil {
+			dialer, err = addProxyToDialer(dialer, proxyURL)
+			if err != nil {
+				return nil, err
+			}
+
 			// We have a dialer; use it to open the connection, then
 			// create a tls client using the connection.
 			netConn, err := dialer(ctx, "tcp", dialAddr)
@@ -112,6 +177,6 @@ func DialURL(ctx context.Context, url *url.URL, transport http.RoundTripper) (ne
 
 		return tlsConn, nil
 	default:
-		return nil, fmt.Errorf("Unknown scheme: %s", url.Scheme)
+		return nil, fmt.Errorf("Unknown scheme: %s", reqURL.Scheme)
 	}
 }
