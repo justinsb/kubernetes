@@ -955,7 +955,8 @@ func (o *ApplyOptions) PrintAndPrunePostProcessor() func() error {
 		}
 
 		if o.Prune {
-			p := newPruner(o)
+			// p := newPruner(o)
+			p := newApplysetPruner(o)
 			return p.pruneAll(o)
 		}
 
