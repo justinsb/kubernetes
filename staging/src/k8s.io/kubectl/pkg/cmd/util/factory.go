@@ -22,6 +22,7 @@ import (
 	"k8s.io/cli-runtime/pkg/resource"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/metadata"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/kubectl/pkg/util/openapi"
 	"k8s.io/kubectl/pkg/validation"
@@ -42,6 +43,9 @@ type Factory interface {
 
 	// DynamicClient returns a dynamic client ready for use
 	DynamicClient() (dynamic.Interface, error)
+
+	// MetadataClient returns an object-metadata client ready for use
+	MetadataClient() (metadata.Interface, error)
 
 	// KubernetesClientSet gives you back an external clientset
 	KubernetesClientSet() (*kubernetes.Clientset, error)

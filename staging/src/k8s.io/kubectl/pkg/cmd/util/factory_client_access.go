@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/metadata"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubectl/pkg/util/openapi"
@@ -87,6 +88,14 @@ func (f *factoryImpl) DynamicClient() (dynamic.Interface, error) {
 		return nil, err
 	}
 	return dynamic.NewForConfig(clientConfig)
+}
+
+func (f *factoryImpl) MetadataClient() (metadata.Interface, error) {
+	clientConfig, err := f.ToRESTConfig()
+	if err != nil {
+		return nil, err
+	}
+	return metadata.NewForConfig(clientConfig)
 }
 
 // NewBuilder returns a new resource builder for structured api objects.
