@@ -68,7 +68,7 @@ func newPruner(o *ApplyOptions) pruner {
 	}
 }
 
-func (p *pruner) pruneAll(o *ApplyOptions) error {
+func (p *pruner) pruneAll(ctx context.Context, o *ApplyOptions) error {
 
 	namespacedRESTMappings, nonNamespacedRESTMappings, err := prune.GetRESTMappings(o.Mapper, o.PruneResources, o.Namespace != "")
 	if err != nil {
@@ -77,14 +77,14 @@ func (p *pruner) pruneAll(o *ApplyOptions) error {
 
 	for n := range p.visitedNamespaces {
 		for _, m := range namespacedRESTMappings {
-			if err := p.prune(n, m); err != nil {
+			if err := p.prune(ctx, n, m); err != nil {
 				return fmt.Errorf("error pruning namespaced object %v: %v", m.GroupVersionKind, err)
 			}
 		}
 	}
 
 	for _, m := range nonNamespacedRESTMappings {
-		if err := p.prune(metav1.NamespaceNone, m); err != nil {
+		if err := p.prune(ctx, metav1.NamespaceNone, m); err != nil {
 			return fmt.Errorf("error pruning nonNamespaced object %v: %v", m.GroupVersionKind, err)
 		}
 	}
@@ -92,10 +92,10 @@ func (p *pruner) pruneAll(o *ApplyOptions) error {
 	return nil
 }
 
-func (p *pruner) prune(namespace string, mapping *meta.RESTMapping) error {
+func (p *pruner) prune(ctx context.Context, namespace string, mapping *meta.RESTMapping) error {
 	objList, err := p.dynamicClient.Resource(mapping.Resource).
 		Namespace(namespace).
-		List(context.TODO(), metav1.ListOptions{
+		List(ctx, metav1.ListOptions{
 			LabelSelector: p.labelSelector,
 			FieldSelector: p.fieldSelector,
 		})
@@ -124,7 +124,7 @@ func (p *pruner) prune(namespace string, mapping *meta.RESTMapping) error {
 		}
 		name := metadata.GetName()
 		if p.dryRunStrategy != cmdutil.DryRunClient {
-			if err := p.delete(namespace, name, mapping); err != nil {
+			if err := p.delete(ctx, namespace, name, mapping); err != nil {
 				return err
 			}
 		}
@@ -138,16 +138,16 @@ func (p *pruner) prune(namespace string, mapping *meta.RESTMapping) error {
 	return nil
 }
 
-func (p *pruner) delete(namespace, name string, mapping *meta.RESTMapping) error {
-	return runDelete(namespace, name, mapping, p.dynamicClient, p.cascadingStrategy, p.gracePeriod, p.dryRunStrategy == cmdutil.DryRunServer)
+func (p *pruner) delete(ctx context.Context, namespace, name string, mapping *meta.RESTMapping) error {
+	return runDelete(ctx, namespace, name, mapping, p.dynamicClient, p.cascadingStrategy, p.gracePeriod, p.dryRunStrategy == cmdutil.DryRunServer)
 }
 
-func runDelete(namespace, name string, mapping *meta.RESTMapping, c dynamic.Interface, cascadingStrategy metav1.DeletionPropagation, gracePeriod int, serverDryRun bool) error {
+func runDelete(ctx context.Context, namespace, name string, mapping *meta.RESTMapping, c dynamic.Interface, cascadingStrategy metav1.DeletionPropagation, gracePeriod int, serverDryRun bool) error {
 	options := asDeleteOptions(cascadingStrategy, gracePeriod)
 	if serverDryRun {
 		options.DryRun = []string{metav1.DryRunAll}
 	}
-	return c.Resource(mapping.Resource).Namespace(namespace).Delete(context.TODO(), name, options)
+	return c.Resource(mapping.Resource).Namespace(namespace).Delete(ctx, name, options)
 }
 
 func asDeleteOptions(cascadingStrategy metav1.DeletionPropagation, gracePeriod int) metav1.DeleteOptions {

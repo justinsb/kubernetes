@@ -1018,7 +1018,7 @@ func (o *ApplyOptions) PrintAndPrunePostProcessor(usePruneV2 bool) func() error 
 				return p.pruneAll(ctx, o.applyset)
 			} else {
 				p := newPruner(o)
-				return p.pruneAll(o)
+				return p.pruneAll(ctx, o)
 			}
 		}
 

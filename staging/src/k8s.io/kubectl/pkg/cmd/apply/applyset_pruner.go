@@ -141,7 +141,7 @@ func (p *applysetPruner) prune(ctx context.Context, namespace string, mapping *m
 		}
 		name := obj.GetName()
 		if p.dryRunStrategy != cmdutil.DryRunClient {
-			if err := p.delete(namespace, name, mapping); err != nil {
+			if err := p.delete(ctx, namespace, name, mapping); err != nil {
 				return err
 			}
 		}
@@ -155,8 +155,8 @@ func (p *applysetPruner) prune(ctx context.Context, namespace string, mapping *m
 	return nil
 }
 
-func (p *applysetPruner) delete(namespace, name string, mapping *meta.RESTMapping) error {
-	return runDelete(namespace, name, mapping, p.dynamicClient, p.cascadingStrategy, p.gracePeriod, p.dryRunStrategy == cmdutil.DryRunServer)
+func (p *applysetPruner) delete(ctx context.Context, namespace, name string, mapping *meta.RESTMapping) error {
+	return runDelete(ctx, namespace, name, mapping, p.dynamicClient, p.cascadingStrategy, p.gracePeriod, p.dryRunStrategy == cmdutil.DryRunServer)
 }
 
 // func runDelete(namespace, name string, mapping *meta.RESTMapping, c dynamic.Interface, cascadingStrategy metav1.DeletionPropagation, gracePeriod int, serverDryRun bool) error {
