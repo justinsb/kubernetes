@@ -1,0 +1,9 @@
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: foo
+---
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: bar

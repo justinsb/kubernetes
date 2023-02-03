@@ -429,15 +429,45 @@ func isIncompatibleServerError(err error) bool {
 func (o *ApplyOptions) GetObjects() ([]*resource.Info, error) {
 	var err error = nil
 	if !o.objectsCached {
-		r := o.Builder.
+		b := o.Builder.
 			Unstructured().
 			Schema(o.Validator).
 			ContinueOnError().
 			NamespaceParam(o.Namespace).DefaultNamespace().
 			FilenameParam(o.EnforceNamespace, &o.DeleteOptions.FilenameOptions).
 			LabelSelectorParam(o.Selector).
-			Flatten().
-			Do()
+			Flatten()
+
+		if o.applyset != nil {
+			applysetLabels := o.applyset.LabelsForMember()
+			b = b.WithObjectTransform(func(i *resource.Info, err error) error {
+				if err != nil {
+					return err
+				}
+				if i.Object == nil {
+					return fmt.Errorf("object not set")
+				}
+				accessor, err := meta.Accessor(i.Object)
+				if err != nil {
+					return fmt.Errorf("getting accessor: %w", err)
+				}
+				labels := accessor.GetLabels()
+				if labels == nil {
+					labels = make(map[string]string)
+				}
+				for k, v := range applysetLabels {
+					if _, found := labels[k]; found {
+						// TODO: wording
+						return fmt.Errorf("label %q already set", k)
+					}
+					labels[k] = v
+				}
+				accessor.SetLabels(labels)
+				return nil
+			})
+		}
+
+		r := b.Do()
 		o.objects, err = r.Infos()
 		o.objectsCached = true
 	}

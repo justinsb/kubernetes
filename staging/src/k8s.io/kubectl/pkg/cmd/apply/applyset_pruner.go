@@ -74,11 +74,7 @@ func newApplysetPruner(o *ApplyOptions) *applysetPruner {
 }
 
 func (p *applysetPruner) pruneAll(ctx context.Context, applyset *ApplySet) error {
-	applysetLabelSelector := metav1.FormatLabelSelector(&metav1.LabelSelector{
-		MatchLabels: map[string]string{
-			"applysetid": applyset.ID,
-		},
-	})
+	applysetLabelSelector := applyset.LabelSelectorForMembers()
 
 	opt := metav1.ListOptions{
 		LabelSelector: applysetLabelSelector,

@@ -2,6 +2,7 @@ package apply
 
 import (
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -24,6 +25,19 @@ func NewApplySet(id string) *ApplySet {
 		namespaces: make(map[string]struct{}),
 	}
 }
+
+func (a *ApplySet) LabelsForMember() map[string]string {
+	return map[string]string{
+		"applyset.k8s.io/part-of": a.ID,
+	}
+}
+
+func (a *ApplySet) LabelSelectorForMembers() string {
+	return metav1.FormatLabelSelector(&metav1.LabelSelector{
+		MatchLabels: a.LabelsForMember(),
+	})
+}
+
 func (a *ApplySet) MarkObjectApplied(resource *meta.RESTMapping, namespace string) {
 	a.resources[resource.Resource] = resource
 	if namespace != "" {

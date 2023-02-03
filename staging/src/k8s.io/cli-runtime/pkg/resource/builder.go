@@ -85,6 +85,8 @@ type Builder struct {
 	limitChunks       int64
 	requestTransforms []RequestTransform
 
+	objectTransforms []VisitorFunc
+
 	resources   []string
 	subresource string
 
@@ -527,6 +529,12 @@ func (b *Builder) NamespaceParam(namespace string) *Builder {
 // to NamespaceParam() if empty.
 func (b *Builder) DefaultNamespace() *Builder {
 	b.defaultNamespace = true
+	return b
+}
+
+// WithObjectTransform adds an arbitrary transformation to the object loading pipeline.
+func (b *Builder) WithObjectTransform(transform VisitorFunc) *Builder {
+	b.objectTransforms = append(b.objectTransforms, transform)
 	return b
 }
 
@@ -1171,6 +1179,7 @@ func (b *Builder) Do() *Result {
 	if b.requireNamespace {
 		helpers = append(helpers, RequireNamespace(b.namespace))
 	}
+	helpers = append(helpers, b.objectTransforms...)
 	helpers = append(helpers, FilterNamespace)
 	if b.requireObject {
 		helpers = append(helpers, RetrieveLazy)
