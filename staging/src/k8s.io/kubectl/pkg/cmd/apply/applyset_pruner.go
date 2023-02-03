@@ -24,6 +24,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/client-go/dynamic"
@@ -146,11 +147,21 @@ func (p *applysetPruner) prune(ctx context.Context, namespace string, mapping *m
 			}
 		}
 
+		// PartialObjectMeta doesn't have the type information we print.
+		// Also in yaml or json mode we print the full object.
+		// TODO: Really delete should return the object, or we should pre-fetch before actually deleting
+		apiVersion, kind := mapping.GroupVersionKind.ToAPIVersionAndKind()
+		printObj := &unstructured.Unstructured{}
+		printObj.SetAPIVersion(apiVersion)
+		printObj.SetKind(kind)
+		printObj.SetNamespace(obj.GetNamespace())
+		printObj.SetName(obj.GetName())
+
 		printer, err := p.toPrinter("pruned")
 		if err != nil {
 			return err
 		}
-		printer.PrintObj(obj, p.out)
+		printer.PrintObj(printObj, p.out)
 	}
 	return nil
 }
