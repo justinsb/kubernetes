@@ -17,6 +17,7 @@ limitations under the License.
 package apply
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,6 +38,7 @@ import (
 	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/cli-runtime/pkg/resource"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/util/csaupgrade"
 	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/cmd/delete"
@@ -101,6 +103,7 @@ type ApplyOptions struct {
 	Builder             *resource.Builder
 	Mapper              meta.RESTMapper
 	DynamicClient       dynamic.Interface
+	MetadataClient      metadata.Interface
 	OpenAPISchema       openapi.Resources
 
 	Namespace        string
@@ -117,6 +120,9 @@ type ApplyOptions struct {
 	// not call the resource builder; only return the set objects.
 	objects       []*resource.Info
 	objectsCached bool
+
+	// applyset holds the state of an apply/prunev2 operation.
+	applyset *ApplySet
 
 	// Stores visited objects/namespaces for later use
 	// calculating the set of objects to prune.
@@ -251,6 +257,11 @@ func (flags *ApplyFlags) ToOptions(f cmdutil.Factory, cmd *cobra.Command, baseNa
 		return nil, err
 	}
 
+	metadataClient, err := f.MetadataClient()
+	if err != nil {
+		return nil, err
+	}
+
 	fieldManager := GetApplyFieldManagerFlag(cmd, serverSideApply)
 
 	// allow for a success message operation to be specified at print time
@@ -305,6 +316,9 @@ func (flags *ApplyFlags) ToOptions(f cmdutil.Factory, cmd *cobra.Command, baseNa
 		}
 	}
 
+	// TODO: Flag?
+	usePruneV2 := true
+
 	o := &ApplyOptions{
 		// 	Store baseName for use in printing warnings / messages involving the base command name.
 		// 	This is useful for downstream command that wrap this one.
@@ -333,6 +347,7 @@ func (flags *ApplyFlags) ToOptions(f cmdutil.Factory, cmd *cobra.Command, baseNa
 		Builder:             builder,
 		Mapper:              mapper,
 		DynamicClient:       dynamicClient,
+		MetadataClient:      metadataClient,
 		OpenAPISchema:       openAPISchema,
 
 		IOStreams: flags.IOStreams,
@@ -344,7 +359,13 @@ func (flags *ApplyFlags) ToOptions(f cmdutil.Factory, cmd *cobra.Command, baseNa
 		VisitedNamespaces: sets.NewString(),
 	}
 
-	o.PostProcessorFn = o.PrintAndPrunePostProcessor()
+	if usePruneV2 {
+		// TODO: base64(sha256(gknn))
+		id := "placeholder-todo"
+		o.applyset = NewApplySet(id)
+	}
+
+	o.PostProcessorFn = o.PrintAndPrunePostProcessor(usePruneV2)
 
 	return o, nil
 }
@@ -939,6 +960,11 @@ func (o *ApplyOptions) MarkObjectVisited(info *resource.Info) error {
 		return err
 	}
 	o.VisitedUids.Insert(string(metadata.GetUID()))
+
+	if o.applyset != nil {
+		o.applyset.MarkObjectApplied(info.Mapping, info.Namespace)
+	}
+
 	return nil
 }
 
@@ -947,17 +973,23 @@ func (o *ApplyOptions) MarkObjectVisited(info *resource.Info) error {
 // objects as a list (if configured for that), and prunes the
 // objects not applied. The returned function is the standard
 // apply post processor.
-func (o *ApplyOptions) PrintAndPrunePostProcessor() func() error {
+func (o *ApplyOptions) PrintAndPrunePostProcessor(usePruneV2 bool) func() error {
 
 	return func() error {
+		ctx := context.TODO()
+
 		if err := o.printObjects(); err != nil {
 			return err
 		}
 
 		if o.Prune {
-			// p := newPruner(o)
-			p := newApplysetPruner(o)
-			return p.pruneAll(o)
+			if usePruneV2 {
+				p := newApplysetPruner(o)
+				return p.pruneAll(ctx, o.applyset)
+			} else {
+				p := newPruner(o)
+				return p.pruneAll(o)
+			}
 		}
 
 		return nil

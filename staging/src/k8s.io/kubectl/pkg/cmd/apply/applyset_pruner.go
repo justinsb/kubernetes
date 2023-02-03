@@ -27,18 +27,23 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/metadata"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
-	"k8s.io/kubectl/pkg/util/prune"
 )
 
 type applysetPruner struct {
-	mapper        meta.RESTMapper
-	dynamicClient dynamic.Interface
+	// mapper meta.RESTMapper
 
-	visitedUids       sets.String
-	visitedNamespaces sets.String
-	labelSelector     string
-	fieldSelector     string
+	dynamicClient  dynamic.Interface
+	metadataClient metadata.Interface
+
+	visitedUids sets.String
+	//visitedNamespaces sets.String
+	// labelSelector     string
+	// fieldSelector string
+
+	// resources  []*meta.RESTMapping
+	// namespaces []string
 
 	cascadingStrategy metav1.DeletionPropagation
 	dryRunStrategy    cmdutil.DryRunStrategy
@@ -49,14 +54,14 @@ type applysetPruner struct {
 	out io.Writer
 }
 
-func newApplysetPruner(o *ApplyOptions) applysetPruner {
-	return applysetPruner{
-		mapper:        o.Mapper,
-		dynamicClient: o.DynamicClient,
-
-		labelSelector:     o.Selector,
-		visitedUids:       o.VisitedUids,
-		visitedNamespaces: o.VisitedNamespaces,
+func newApplysetPruner(o *ApplyOptions) *applysetPruner {
+	return &applysetPruner{
+		// mapper:        o.Mapper,
+		dynamicClient:  o.DynamicClient,
+		metadataClient: o.MetadataClient,
+		// labelSelector:     o.Selector,
+		visitedUids: o.VisitedUids,
+		// visitedNamespaces: o.VisitedNamespaces,
 
 		cascadingStrategy: o.DeleteOptions.CascadingStrategy,
 		dryRunStrategy:    o.DryRunStrategy,
@@ -68,61 +73,77 @@ func newApplysetPruner(o *ApplyOptions) applysetPruner {
 	}
 }
 
-func (p *applysetPruner) pruneAll(o *ApplyOptions) error {
+func (p *applysetPruner) pruneAll(ctx context.Context, applyset *ApplySet) error {
+	applysetLabelSelector := metav1.FormatLabelSelector(&metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			"applysetid": applyset.ID,
+		},
+	})
 
-	namespacedRESTMappings, nonNamespacedRESTMappings, err := prune.GetRESTMappings(o.Mapper, o.PruneResources, o.Namespace != "")
-	if err != nil {
-		return fmt.Errorf("error retrieving RESTMappings to prune: %v", err)
+	opt := metav1.ListOptions{
+		LabelSelector: applysetLabelSelector,
 	}
 
-	for n := range p.visitedNamespaces {
-		for _, m := range namespacedRESTMappings {
-			if err := p.prune(n, m); err != nil {
-				return fmt.Errorf("error pruning namespaced object %v: %v", m.GroupVersionKind, err)
+	// TODO: Split into discovery and deletion, run discovery in parallel (and maybe in consistent order or in parallel?)
+	for _, restMapping := range applyset.AllPrunableResources() {
+		switch restMapping.Scope.Name() {
+		case meta.RESTScopeNameNamespace:
+			for _, namespace := range applyset.AllPrunableNamespaces() {
+				if err := p.prune(ctx, namespace, restMapping, opt); err != nil {
+					return fmt.Errorf("error pruning namespaced object %v: %w", restMapping.GroupVersionKind, err)
+				}
 			}
-		}
-	}
 
-	for _, m := range nonNamespacedRESTMappings {
-		if err := p.prune(metav1.NamespaceNone, m); err != nil {
-			return fmt.Errorf("error pruning nonNamespaced object %v: %v", m.GroupVersionKind, err)
+		case meta.RESTScopeNameRoot:
+			if err := p.prune(ctx, metav1.NamespaceNone, restMapping, opt); err != nil {
+				return fmt.Errorf("error pruning nonNamespaced object %v: %w", restMapping.GroupVersionKind, err)
+			}
+
+		default:
+			return fmt.Errorf("unhandled scope %q", restMapping.Scope.Name())
 		}
 	}
+	// namespacedRESTMappings, nonNamespacedRESTMappings, err := prune.GetRESTMappings(o.Mapper, o.PruneResources, o.Namespace != "")
+	// if err != nil {
+	// 	return fmt.Errorf("error retrieving RESTMappings to prune: %w", err)
+	// }
+
+	// for n := range p.visitedNamespaces {
+	// 	for _, m := range namespacedRESTMappings {
+	// 		if err := p.prune(ctx, n, m, opt); err != nil {
+	// 			return fmt.Errorf("error pruning namespaced object %v: %w", m.GroupVersionKind, err)
+	// 		}
+	// 	}
+	// }
+
+	// for _, m := range nonNamespacedRESTMappings {
+	// 	if err := p.prune(ctx, metav1.NamespaceNone, m, opt); err != nil {
+	// 		return fmt.Errorf("error pruning nonNamespaced object %v: %w", m.GroupVersionKind, err)
+	// 	}
+	// }
 
 	return nil
 }
 
-func (p *applysetPruner) prune(namespace string, mapping *meta.RESTMapping) error {
-	objList, err := p.dynamicClient.Resource(mapping.Resource).
-		Namespace(namespace).
-		List(context.TODO(), metav1.ListOptions{
-			LabelSelector: p.labelSelector,
-			FieldSelector: p.fieldSelector,
-		})
+func (p *applysetPruner) prune(ctx context.Context, namespace string, mapping *meta.RESTMapping, opt metav1.ListOptions) error {
+	objects, err := p.metadataClient.Resource(mapping.Resource).Namespace(namespace).List(ctx, opt)
 	if err != nil {
 		return err
 	}
 
-	objs, err := meta.ExtractList(objList)
-	if err != nil {
-		return err
-	}
+	for i := range objects.Items {
+		obj := &objects.Items[i]
 
-	for _, obj := range objs {
-		metadata, err := meta.Accessor(obj)
-		if err != nil {
-			return err
-		}
-		annots := metadata.GetAnnotations()
-		if _, ok := annots[corev1.LastAppliedConfigAnnotation]; !ok {
+		annotations := obj.GetAnnotations()
+		if _, ok := annotations[corev1.LastAppliedConfigAnnotation]; !ok {
 			// don't prune resources not created with apply
 			continue
 		}
-		uid := metadata.GetUID()
+		uid := obj.GetUID()
 		if p.visitedUids.Has(string(uid)) {
 			continue
 		}
-		name := metadata.GetName()
+		name := obj.GetName()
 		if p.dryRunStrategy != cmdutil.DryRunClient {
 			if err := p.delete(namespace, name, mapping); err != nil {
 				return err
