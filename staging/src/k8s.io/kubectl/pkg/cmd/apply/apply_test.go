@@ -2331,7 +2331,7 @@ metadata:
     applyset.k8s.io/tooling: kubectl/v0.0.0-master+$Format:%H$
   creationTimestamp: null
   labels:
-    applyset.k8s.io/id: placeholder-todo
+    applyset.k8s.io/id: bXlTZXQudGVzdC5TZWNyZXQu
   name: mySet
   namespace: test
 `, string(createdSecret))
@@ -2361,7 +2361,7 @@ metadata:
     applyset.k8s.io/tooling: kubectl/v0.0.0-master+$Format:%H$
   creationTimestamp: null
   labels:
-    applyset.k8s.io/id: placeholder-todo
+    applyset.k8s.io/id: bXlTZXQudGVzdC5TZWNyZXQu
   name: mySet
   namespace: test
 `, string(updatedSecret))
@@ -2392,7 +2392,7 @@ metadata:
     applyset.k8s.io/tooling: kubectl/v0.0.0-master+$Format:%H$
   creationTimestamp: null
   labels:
-    applyset.k8s.io/id: placeholder-todo
+    applyset.k8s.io/id: bXlTZXQudGVzdC5TZWNyZXQu
   name: mySet
   namespace: test
 `, string(updatedSecret))
@@ -2445,7 +2445,7 @@ func TestApplySetInvalidLiveParent(t *testing.T) {
 			}),
 		}
 	}
-	validIDLabel := "placeholder-todo"
+	validIDLabel := "bXlTZXQudGVzdC5TZWNyZXQu"
 	validToolingAnnotation := "kubectl/v1.27.0"
 	validGrsAnnotation := "deployments.apps,namespaces,secrets"
 
@@ -2539,7 +2539,7 @@ metadata:
     applyset.k8s.io/tooling: kubectl/v0.0.0-master+$Format:%H$
   creationTimestamp: null
   labels:
-    applyset.k8s.io/id: placeholder-todo
+    applyset.k8s.io/id: bXlTZXQudGVzdC5TZWNyZXQu
   name: mySet
   namespace: test
 `
