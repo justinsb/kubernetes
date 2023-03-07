@@ -284,6 +284,8 @@ const (
 	filenameWidgetServerside    = "../../../testdata/apply/widget-serverside.yaml"
 	filenameDeployObjServerside = "../../../testdata/apply/deploy-serverside.yaml"
 	filenameDeployObjClientside = "../../../testdata/apply/deploy-clientside.yaml"
+	filenameApplySetCR          = "../../../testdata/apply/applyset-cr.yaml"
+	filenameApplySetCRD         = "../../../testdata/apply/applysets-crd.yaml"
 )
 
 func readConfigMapList(t *testing.T, filename string) [][]byte {
@@ -352,6 +354,22 @@ func readUnstructuredFromFile(t *testing.T, filename string) *unstructured.Unstr
 		t.Fatal(err)
 	}
 	return &unst
+}
+
+func readAnonymousObject(t *testing.T, data []byte) (string, runtime.Object, error) {
+	unstr := &unstructured.Unstructured{}
+	require.NoError(t, yaml.Unmarshal(data, unstr))
+	acc, err := meta.Accessor(unstr)
+	require.NoError(t, err)
+	return acc.GetName(), unstr, nil
+}
+
+func readAnonymousObjectFromFile(t *testing.T, filename string) (name string, json []byte, obj runtime.Object, err error) {
+	objJSON, err := yaml.YAMLToJSON(readBytesFromFile(t, filename))
+	require.NoError(t, err)
+	objName, obj, err := readAnonymousObject(t, objJSON)
+	require.NoError(t, err)
+	return objName, objJSON, obj, nil
 }
 
 func readServiceFromFile(t *testing.T, filename string) *corev1.Service {
@@ -2111,7 +2129,7 @@ func TestApplySetParentValidation(t *testing.T) {
 		"other namespaced builtin parents types are correctly parsed but invalid": {
 			applysetFlag:     "deployments.apps/thename",
 			expectParentKind: "Deployment",
-			expectErr:        "[resource \"apps/v1, Resource=deployments\" is not permitted as an ApplySet parent, namespace is required to use namespace-scoped ApplySet]",
+			expectErr:        "[namespace is required to use namespace-scoped ApplySet, resource \"apps/v1, Resource=deployments\" is not permitted as an ApplySet parent]",
 		},
 		"namespaced builtin parents with multi-segment groups are correctly parsed but invalid": {
 			applysetFlag:     "priorityclasses.scheduling.k8s.io/thename",
@@ -2169,7 +2187,7 @@ func TestApplySetParentValidation(t *testing.T) {
 				cmd.Flags().Set("prune", "true")
 				f := cmdtesting.NewTestFactory()
 				defer f.Cleanup()
-				f.Client = &fake.RESTClient{}
+				addMinimalClientsForApplySetTests(t, f, nil)
 
 				var expectedParentNs string
 				if test.namespaceFlag != "" {
@@ -2203,6 +2221,56 @@ func TestApplySetParentValidation(t *testing.T) {
 			})
 		})
 	}
+}
+
+func addMinimalClientsForApplySetTests(t *testing.T, tf *cmdtesting.TestFactory, state *map[string][]byte) {
+	var serverSideData map[string][]byte
+	var objects []runtime.Object
+	if state == nil {
+		// CRD is always required unless the test is for an early-stage failure case
+		objName, objJSON, obj, err := readAnonymousObjectFromFile(t, filenameApplySetCRD)
+		require.NoError(t, err)
+		serverSideData = map[string][]byte{
+			"/apis/apiextensions.k8s.io/v1/customresourcedefinitions/" + objName: objJSON,
+		}
+		objects = append(objects, obj)
+	} else {
+		serverSideData = *state
+		for _, objJson := range serverSideData {
+			_, obj, err := readAnonymousObject(t, objJson)
+			require.NoError(t, err)
+			objects = append(objects, obj)
+			require.NoError(t, err)
+		}
+	}
+	fakeDynamicClient := dynamicfakeclient.NewSimpleDynamicClient(scheme.Scheme, objects...)
+	tf.FakeDynamicClient = fakeDynamicClient
+	tf.Client = &fake.RESTClient{
+		NegotiatedSerializer: resource.UnstructuredPlusDefaultContentConfig().NegotiatedSerializer,
+		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
+			switch req.Method {
+			case "GET":
+				data, ok := serverSideData[req.URL.Path]
+				if !ok {
+					return &http.Response{StatusCode: http.StatusNotFound, Header: cmdtesting.DefaultHeader(), Body: io.NopCloser(bytes.NewReader(nil))}, nil
+				}
+				return &http.Response{StatusCode: http.StatusOK, Header: cmdtesting.DefaultHeader(), Body: io.NopCloser(bytes.NewReader(data))}, nil
+			case "PATCH":
+				if got := req.Header.Get("Content-Type"); got == string(types.ApplyPatchType) {
+					// crudely save the patch data as the new object and return it
+					serverSideData[req.URL.Path], _ = io.ReadAll(req.Body)
+					return &http.Response{StatusCode: http.StatusOK, Header: cmdtesting.DefaultHeader(), Body: cmdtesting.BytesBody(serverSideData[req.URL.Path])}, nil
+				} else {
+					t.Fatalf("unexpected content-type: %s\n", got)
+					return nil, nil
+				}
+			default:
+				t.Fatalf("unexpected request: %#v\n%#v", req.URL, req)
+				return nil, nil
+			}
+		}),
+	}
+	return
 }
 
 func TestLoadObjects(t *testing.T) {
@@ -2271,7 +2339,7 @@ func TestApplySetParentManagement(t *testing.T) {
 
 	nameRC, rc := readReplicationController(t, filenameRC)
 	pathRC := "/namespaces/test/replicationcontrollers/" + nameRC
-	nameParentSecret := "mySet"
+	nameParentSecret := "my-set"
 	pathSecret := "/namespaces/test/secrets/" + nameParentSecret
 
 	tf := cmdtesting.NewTestFactory().WithNamespace("test")
@@ -2280,32 +2348,7 @@ func TestApplySetParentManagement(t *testing.T) {
 	serverSideData := map[string][]byte{
 		pathRC: rc,
 	}
-
-	tf.Client = &fake.RESTClient{
-		NegotiatedSerializer: resource.UnstructuredPlusDefaultContentConfig().NegotiatedSerializer,
-		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
-			switch req.Method {
-			case "GET":
-				data, ok := serverSideData[req.URL.Path]
-				if !ok {
-					return &http.Response{StatusCode: http.StatusNotFound, Header: cmdtesting.DefaultHeader(), Body: io.NopCloser(bytes.NewReader(nil))}, nil
-				}
-				return &http.Response{StatusCode: http.StatusOK, Header: cmdtesting.DefaultHeader(), Body: io.NopCloser(bytes.NewReader(data))}, nil
-			case "PATCH":
-				if got := req.Header.Get("Content-Type"); got == string(types.ApplyPatchType) {
-					// crudely save the patch data as the new object and return it
-					serverSideData[req.URL.Path], _ = io.ReadAll(req.Body)
-					return &http.Response{StatusCode: http.StatusOK, Header: cmdtesting.DefaultHeader(), Body: io.NopCloser(bytes.NewReader(serverSideData[req.URL.Path]))}, nil
-				} else {
-					t.Fatalf("unexpected content-type: %s\n", got)
-					return nil, nil
-				}
-			default:
-				t.Fatalf("unexpected request: %#v\n%#v", req.URL, req)
-				return nil, nil
-			}
-		}),
-	}
+	addMinimalClientsForApplySetTests(t, tf, &serverSideData)
 
 	// Initially, the rc 'exists' server side but the svc and applyset secret do not
 	// This should 'update' the rc and create the secret
@@ -2331,8 +2374,8 @@ metadata:
     applyset.k8s.io/tooling: kubectl/v0.0.0-master+$Format:%H$
   creationTimestamp: null
   labels:
-    applyset.k8s.io/id: bXlTZXQudGVzdC5TZWNyZXQu
-  name: mySet
+    applyset.k8s.io/id: bXktc2V0LnRlc3QuU2VjcmV0
+  name: my-set
   namespace: test
 `, string(createdSecret))
 
@@ -2361,8 +2404,8 @@ metadata:
     applyset.k8s.io/tooling: kubectl/v0.0.0-master+$Format:%H$
   creationTimestamp: null
   labels:
-    applyset.k8s.io/id: bXlTZXQudGVzdC5TZWNyZXQu
-  name: mySet
+    applyset.k8s.io/id: bXktc2V0LnRlc3QuU2VjcmV0
+  name: my-set
   namespace: test
 `, string(updatedSecret))
 
@@ -2392,8 +2435,8 @@ metadata:
     applyset.k8s.io/tooling: kubectl/v0.0.0-master+$Format:%H$
   creationTimestamp: null
   labels:
-    applyset.k8s.io/id: bXlTZXQudGVzdC5TZWNyZXQu
-  name: mySet
+    applyset.k8s.io/id: bXktc2V0LnRlc3QuU2VjcmV0
+  name: my-set
   namespace: test
 `, string(updatedSecret))
 
@@ -2402,7 +2445,7 @@ metadata:
 }
 
 func TestApplySetInvalidLiveParent(t *testing.T) {
-	nameParentSecret := "mySet"
+	nameParentSecret := "my-set"
 	pathSecret := "/namespaces/test/secrets/" + nameParentSecret
 	tf := cmdtesting.NewTestFactory().WithNamespace("test")
 	defer tf.Cleanup()
@@ -2413,39 +2456,7 @@ func TestApplySetInvalidLiveParent(t *testing.T) {
 		idLabel           string
 		expectErr         string
 	}
-	fakeParentGetterForTest := func(t *testing.T, test testCase) *fake.RESTClient {
-		return &fake.RESTClient{
-			NegotiatedSerializer: resource.UnstructuredPlusDefaultContentConfig().NegotiatedSerializer,
-			Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
-				if req.Method == "GET" && req.URL.Path == pathSecret {
-					obj := &metav1.PartialObjectMetadata{
-						TypeMeta: metav1.TypeMeta{Kind: "Secret", APIVersion: "v1"},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:        nameParentSecret,
-							Namespace:   "test",
-							Annotations: make(map[string]string),
-							Labels:      make(map[string]string),
-						},
-					}
-					if test.grsAnnotation != "" {
-						obj.ObjectMeta.Annotations[ApplySetGRsAnnotation] = test.grsAnnotation
-					}
-					if test.toolingAnnotation != "" {
-						obj.ObjectMeta.Annotations[ApplySetToolingAnnotation] = test.toolingAnnotation
-					}
-					if test.idLabel != "" {
-						obj.ObjectMeta.Labels[ApplySetParentIDLabel] = test.idLabel
-					}
-					data, err := json.Marshal(obj)
-					require.NoError(t, err)
-					return &http.Response{StatusCode: http.StatusOK, Header: cmdtesting.DefaultHeader(), Body: io.NopCloser(bytes.NewReader(data))}, nil
-				}
-				t.Fatalf("unexpected request to %s:\n%#v", req.URL.Path, req)
-				return nil, nil
-			}),
-		}
-	}
-	validIDLabel := "bXlTZXQudGVzdC5TZWNyZXQu"
+	validIDLabel := "bXktc2V0LnRlc3QuU2VjcmV0"
 	validToolingAnnotation := "kubectl/v1.27.0"
 	validGrsAnnotation := "deployments.apps,namespaces,secrets"
 
@@ -2454,49 +2465,49 @@ func TestApplySetInvalidLiveParent(t *testing.T) {
 			grsAnnotation:     "",
 			toolingAnnotation: validToolingAnnotation,
 			idLabel:           validIDLabel,
-			expectErr:         "error: parsing ApplySet annotation on \"secrets./mySet\": kubectl requires the \"applyset.k8s.io/contains-group-resources\" annotation to be set on all ApplySet parent objects",
+			expectErr:         "error: parsing ApplySet annotation on \"secrets./my-set\": kubectl requires the \"applyset.k8s.io/contains-group-resources\" annotation to be set on all ApplySet parent objects",
 		},
 		"group-resources annotation should not contain invalid resources": {
 			grsAnnotation:     "does-not-exist",
 			toolingAnnotation: validToolingAnnotation,
 			idLabel:           validIDLabel,
-			expectErr:         "error: parsing ApplySet annotation on \"secrets./mySet\": invalid group resource in \"applyset.k8s.io/contains-group-resources\" annotation: no matches for /, Resource=does-not-exist",
+			expectErr:         "error: parsing ApplySet annotation on \"secrets./my-set\": invalid group resource in \"applyset.k8s.io/contains-group-resources\" annotation: no matches for /, Resource=does-not-exist",
 		},
 		"tooling annotation is required": {
 			grsAnnotation:     validGrsAnnotation,
 			toolingAnnotation: "",
 			idLabel:           validIDLabel,
-			expectErr:         "error: ApplySet parent object \"secrets./mySet\" already exists and is missing required annotation \"applyset.k8s.io/tooling\"",
+			expectErr:         "error: ApplySet parent object \"secrets./my-set\" already exists and is missing required annotation \"applyset.k8s.io/tooling\"",
 		},
 		"tooling annotation must have kubectl prefix": {
 			grsAnnotation:     validGrsAnnotation,
 			toolingAnnotation: "helm/v3",
 			idLabel:           validIDLabel,
-			expectErr:         "error: ApplySet parent object \"secrets./mySet\" already exists and is managed by tooling \"helm\" instead of \"kubectl\"",
+			expectErr:         "error: ApplySet parent object \"secrets./my-set\" already exists and is managed by tooling \"helm\" instead of \"kubectl\"",
 		},
 		"tooling annotation with invalid prefix with one segment can be parsed": {
 			grsAnnotation:     validGrsAnnotation,
 			toolingAnnotation: "helm",
 			idLabel:           validIDLabel,
-			expectErr:         "error: ApplySet parent object \"secrets./mySet\" already exists and is managed by tooling \"helm\" instead of \"kubectl\"",
+			expectErr:         "error: ApplySet parent object \"secrets./my-set\" already exists and is managed by tooling \"helm\" instead of \"kubectl\"",
 		},
 		"tooling annotation with invalid prefix with many segments can be parsed": {
 			grsAnnotation:     validGrsAnnotation,
 			toolingAnnotation: "example.com/tool/why/v1",
 			idLabel:           validIDLabel,
-			expectErr:         "error: ApplySet parent object \"secrets./mySet\" already exists and is managed by tooling \"example.com/tool/why\" instead of \"kubectl\"",
+			expectErr:         "error: ApplySet parent object \"secrets./my-set\" already exists and is managed by tooling \"example.com/tool/why\" instead of \"kubectl\"",
 		},
 		"ID label is required": {
 			grsAnnotation:     validGrsAnnotation,
 			toolingAnnotation: validToolingAnnotation,
 			idLabel:           "",
-			expectErr:         "error: ApplySet parent object \"secrets./mySet\" exists and does not have required label applyset.k8s.io/id",
+			expectErr:         "error: ApplySet parent object \"secrets./my-set\" exists and does not have required label applyset.k8s.io/id",
 		},
 		"ID label must match the ApplySet's real ID": {
 			grsAnnotation:     validGrsAnnotation,
 			toolingAnnotation: validToolingAnnotation,
 			idLabel:           "somethingelse",
-			expectErr:         fmt.Sprintf("error: ApplySet parent object \"secrets./mySet\" exists and has incorrect value for label \"applyset.k8s.io/id\" (got: somethingelse, want: %s)", validIDLabel),
+			expectErr:         fmt.Sprintf("error: ApplySet parent object \"secrets./my-set\" exists and has incorrect value for label \"applyset.k8s.io/id\" (got: somethingelse, want: %s)", validIDLabel),
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -2504,7 +2515,29 @@ func TestApplySetInvalidLiveParent(t *testing.T) {
 			cmdutil.BehaviorOnFatal(func(s string, i int) {
 				assert.Equal(t, test.expectErr, s)
 			})
-			tf.Client = fakeParentGetterForTest(t, test)
+			obj := &metav1.PartialObjectMetadata{
+				TypeMeta: metav1.TypeMeta{Kind: "Secret", APIVersion: "v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        nameParentSecret,
+					Namespace:   "test",
+					Annotations: make(map[string]string),
+					Labels:      make(map[string]string),
+				},
+			}
+			if test.grsAnnotation != "" {
+				obj.ObjectMeta.Annotations[ApplySetGRsAnnotation] = test.grsAnnotation
+			}
+			if test.toolingAnnotation != "" {
+				obj.ObjectMeta.Annotations[ApplySetToolingAnnotation] = test.toolingAnnotation
+			}
+			if test.idLabel != "" {
+				obj.ObjectMeta.Labels[ApplySetParentIDLabel] = test.idLabel
+			}
+			data, err := json.Marshal(obj)
+			require.NoError(t, err)
+			addMinimalClientsForApplySetTests(t, tf, &map[string][]byte{
+				pathSecret: data,
+			})
 
 			cmdtesting.WithAlphaEnvs([]cmdutil.FeatureGate{cmdutil.ApplySet}, t, func(t *testing.T) {
 				ioStreams, _, _, _ := genericclioptions.NewTestIOStreams()
@@ -2519,6 +2552,78 @@ func TestApplySetInvalidLiveParent(t *testing.T) {
 	}
 }
 
+func TestApplySet_ClusterScopedCustomResourceParent(t *testing.T) {
+	nameRC, rcJSON, _, err := readAnonymousObjectFromFile(t, filenameRC)
+	require.NoError(t, err)
+	pathRC := "/namespaces/test/replicationcontrollers/" + nameRC
+
+	crdName, crdJSON, _, err := readAnonymousObjectFromFile(t, filenameApplySetCRD)
+	require.NoError(t, err)
+	pathAppySetCRD := "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/" + crdName
+
+	nameParentApplySet, applySetJSON, _, err := readAnonymousObjectFromFile(t, filenameApplySetCR)
+	require.NoError(t, err)
+	pathParentApplySet := "/applysets/" + nameParentApplySet
+
+	tf := cmdtesting.NewTestFactory()
+	defer tf.Cleanup()
+
+	serverSideData := map[string][]byte{
+		pathRC:         rcJSON,
+		pathAppySetCRD: crdJSON,
+	}
+	addMinimalClientsForApplySetTests(t, tf, &serverSideData)
+	ioStreams, _, outbuff, errbuff := genericclioptions.NewTestIOStreams()
+	cmdutil.BehaviorOnFatal(func(s string, i int) {
+		require.Equal(t, "error: custom resource ApplySet parents cannot be created automatically", s)
+	})
+	defer cmdutil.DefaultBehaviorOnFatal()
+
+	// Initially, the rc 'exists' server side the parent CR does not. This should fail.
+	cmdtesting.WithAlphaEnvs([]cmdutil.FeatureGate{cmdutil.ApplySet}, t, func(t *testing.T) {
+		cmd := NewCmdApply("kubectl", tf, ioStreams)
+		cmd.Flags().Set("filename", filenameRC)
+		cmd.Flags().Set("server-side", "true")
+		cmd.Flags().Set("applyset", fmt.Sprintf("applysets.company.com/my-set"))
+		cmd.Flags().Set("prune", "true")
+		cmd.Run(cmd, []string{})
+	})
+
+	// TODO: replace with cmdtesting.InitTestErrorHandler() when the feature is fully implemented
+	cmdutil.BehaviorOnFatal(func(s string, i int) {
+		if s != "error: ApplySet-based pruning is not yet implemented" {
+			t.Fatalf("unexpected exit %d: %s", i, s)
+		}
+	})
+
+	// 'create' the CR parent
+	serverSideData[pathParentApplySet] = applySetJSON
+	cmdtesting.WithAlphaEnvs([]cmdutil.FeatureGate{cmdutil.ApplySet}, t, func(t *testing.T) {
+		cmd := NewCmdApply("kubectl", tf, ioStreams)
+		cmd.Flags().Set("filename", filenameRC)
+		cmd.Flags().Set("server-side", "true")
+		cmd.Flags().Set("applyset", fmt.Sprintf("applysets.company.com/my-set"))
+		cmd.Flags().Set("prune", "true")
+		cmd.Run(cmd, []string{})
+	})
+	assert.Equal(t, "replicationcontroller/test-rc serverside-applied\n", outbuff.String())
+	assert.Equal(t, "", errbuff.String())
+	updatedApplySet, err := yaml.JSONToYAML(serverSideData[pathParentApplySet])
+	require.NoError(t, err)
+	require.Equal(t, `apiVersion: company.com/v1
+kind: ApplySet
+metadata:
+  annotations:
+    applyset.k8s.io/additional-namespaces: test
+    applyset.k8s.io/contains-group-resources: replicationcontrollers
+    applyset.k8s.io/tooling: kubectl/v0.0.0-master+$Format:%H$
+  creationTimestamp: null
+  labels:
+    applyset.k8s.io/id: bXktc2V0LkFwcGx5U2V0LmNvbXBhbnkuY29t
+  name: my-set
+`, string(updatedApplySet))
+}
+
 func TestApplySetUpdateConflictsAreRetried(t *testing.T) {
 	// TODO: replace with cmdtesting.InitTestErrorHandler() when the feature is fully implemented
 	cmdutil.BehaviorOnFatal(func(s string, i int) {
@@ -2528,7 +2633,7 @@ func TestApplySetUpdateConflictsAreRetried(t *testing.T) {
 	})
 	defer cmdutil.DefaultBehaviorOnFatal()
 
-	nameParentSecret := "mySet"
+	nameParentSecret := "my-set"
 	pathSecret := "/namespaces/test/secrets/" + nameParentSecret
 	secretYaml := `apiVersion: v1
 kind: Secret
@@ -2539,8 +2644,8 @@ metadata:
     applyset.k8s.io/tooling: kubectl/v0.0.0-master+$Format:%H$
   creationTimestamp: null
   labels:
-    applyset.k8s.io/id: bXlTZXQudGVzdC5TZWNyZXQu
-  name: mySet
+    applyset.k8s.io/id: bXktc2V0LnRlc3QuU2VjcmV0
+  name: my-set
   namespace: test
 `
 	tf := cmdtesting.NewTestFactory().WithNamespace("test")
@@ -2602,7 +2707,7 @@ func TestApplySetDryRun(t *testing.T) {
 
 	nameRC, rc := readReplicationController(t, filenameRC)
 	pathRC := "/namespaces/test/replicationcontrollers/" + nameRC
-	nameParentSecret := "mySet"
+	nameParentSecret := "my-set"
 	pathSecret := "/namespaces/test/secrets/" + nameParentSecret
 
 	tf := cmdtesting.NewTestFactory().WithNamespace("test")

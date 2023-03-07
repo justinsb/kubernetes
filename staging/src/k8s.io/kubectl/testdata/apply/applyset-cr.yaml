@@ -1,0 +1,9 @@
+apiVersion: company.com/v1
+kind: ApplySet
+metadata:
+  name: my-set
+  annotations:
+    applyset.k8s.io/tooling: kubectl/v0.0.0
+    applyset.k8s.io/contains-group-resources: ""
+  labels:
+    applyset.k8s.io/id: bXktc2V0LkFwcGx5U2V0LmNvbXBhbnkuY29t

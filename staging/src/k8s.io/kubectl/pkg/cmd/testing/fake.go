@@ -786,6 +786,7 @@ func testDynamicResources() []*restmapper.APIGroupResources {
 			VersionedResources: map[string][]metav1.APIResource{
 				"v1": {
 					{Name: "bars", Namespaced: true, Kind: "Bar"},
+					{Name: "applysets", Namespaced: false, Kind: "ApplySet"},
 				},
 			},
 		},

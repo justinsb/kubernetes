@@ -400,7 +400,7 @@ func (o *ApplyOptions) Validate() error {
 		if !o.Prune {
 			return fmt.Errorf("--applyset requires --prune")
 		}
-		if err := o.ApplySet.Validate(); err != nil {
+		if err := o.ApplySet.Validate(context.TODO(), o.DynamicClient); err != nil {
 			return err
 		}
 	}
