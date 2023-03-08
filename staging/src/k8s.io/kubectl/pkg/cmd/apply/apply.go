@@ -509,7 +509,7 @@ func (o *ApplyOptions) Run() error {
 	}
 
 	if o.ApplySet != nil {
-		if err := o.ApplySet.FetchParent(); err != nil {
+		if err := o.ApplySet.FetchParent(context.TODO(), o.DynamicClient); err != nil {
 			return err
 		}
 		// Update the live parent object to the superset of the current and previous resources.
