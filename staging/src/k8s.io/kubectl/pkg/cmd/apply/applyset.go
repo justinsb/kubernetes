@@ -251,21 +251,18 @@ func (a *ApplySet) addLabels(objects []*resource.Info) error {
 	return nil
 }
 
-func (a *ApplySet) FetchParent(ctx context.Context, client dynamic.Interface) error {
-	resourceClient := dynamic.ResourceInterface(client.Resource(a.parentRef.Resource))
-	if a.parentRef.IsNamespaced() {
-		resourceClient = client.Resource(a.parentRef.Resource).Namespace(a.parentRef.Namespace)
-	}
-	obj, err := resourceClient.Get(ctx, a.parentRef.Name, metav1.GetOptions{})
+func (a *ApplySet) FetchParent() error {
+	helper := resource.NewHelper(a.client, a.parentRef.RESTMapping)
+	obj, err := helper.Get(a.parentRef.Namespace, a.parentRef.Name)
 	if errors.IsNotFound(err) {
 		if !builtinApplySetParentGVRs.Has(a.parentRef.Resource) {
 			return fmt.Errorf("custom resource ApplySet parents cannot be created automatically")
 		}
 		return nil
 	} else if err != nil {
-		return fmt.Errorf("failed to fetch ApplySet parent object %q: %w", a.parentRef, err)
+		return fmt.Errorf("failed to fetch ApplySet parent object %q from server: %w", a.parentRef, err)
 	} else if obj == nil {
-		return fmt.Errorf("failed to fetch ApplySet parent object %q", a.parentRef)
+		return fmt.Errorf("failed to fetch ApplySet parent object %q from server", a.parentRef)
 	}
 
 	labels, annotations, err := getLabelsAndAnnotations(obj)

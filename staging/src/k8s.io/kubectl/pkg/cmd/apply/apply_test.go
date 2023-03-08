@@ -2187,7 +2187,7 @@ func TestApplySetParentValidation(t *testing.T) {
 				cmd.Flags().Set("prune", "true")
 				f := cmdtesting.NewTestFactory()
 				defer f.Cleanup()
-				_ = addMinimalClientsForApplySetTests(t, f, nil)
+				addMinimalClientsForApplySetTests(t, f, nil)
 
 				var expectedParentNs string
 				if test.namespaceFlag != "" {
@@ -2223,7 +2223,7 @@ func TestApplySetParentValidation(t *testing.T) {
 	}
 }
 
-func addMinimalClientsForApplySetTests(t *testing.T, tf *cmdtesting.TestFactory, state *map[string][]byte) testing2.ObjectTracker {
+func addMinimalClientsForApplySetTests(t *testing.T, tf *cmdtesting.TestFactory, state *map[string][]byte) {
 	var serverSideData map[string][]byte
 	var objects []runtime.Object
 	if state == nil {
@@ -2270,7 +2270,7 @@ func addMinimalClientsForApplySetTests(t *testing.T, tf *cmdtesting.TestFactory,
 			}
 		}),
 	}
-	return tf.FakeDynamicClient.Tracker()
+	return
 }
 
 func TestLoadObjects(t *testing.T) {
@@ -2348,7 +2348,7 @@ func TestApplySetParentManagement(t *testing.T) {
 	serverSideData := map[string][]byte{
 		pathRC: rc,
 	}
-	_ = addMinimalClientsForApplySetTests(t, tf, &serverSideData)
+	addMinimalClientsForApplySetTests(t, tf, &serverSideData)
 
 	// Initially, the rc 'exists' server side but the svc and applyset secret do not
 	// This should 'update' the rc and create the secret
@@ -2535,7 +2535,7 @@ func TestApplySetInvalidLiveParent(t *testing.T) {
 			}
 			data, err := json.Marshal(obj)
 			require.NoError(t, err)
-			_ = addMinimalClientsForApplySetTests(t, tf, &map[string][]byte{
+			addMinimalClientsForApplySetTests(t, tf, &map[string][]byte{
 				pathSecret: data,
 			})
 
@@ -2561,7 +2561,7 @@ func TestApplySet_ClusterScopedCustomResourceParent(t *testing.T) {
 	require.NoError(t, err)
 	pathAppySetCRD := "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/" + crdName
 
-	nameParentApplySet, _, applySetObj, err := readAnonymousObjectFromFile(t, filenameApplySetCR)
+	nameParentApplySet, applySetJSON, _, err := readAnonymousObjectFromFile(t, filenameApplySetCR)
 	require.NoError(t, err)
 	pathParentApplySet := "/applysets/" + nameParentApplySet
 
@@ -2572,7 +2572,7 @@ func TestApplySet_ClusterScopedCustomResourceParent(t *testing.T) {
 		pathRC:         rcJSON,
 		pathAppySetCRD: crdJSON,
 	}
-	tracker := addMinimalClientsForApplySetTests(t, tf, &serverSideData)
+	addMinimalClientsForApplySetTests(t, tf, &serverSideData)
 	ioStreams, _, outbuff, errbuff := genericclioptions.NewTestIOStreams()
 	cmdutil.BehaviorOnFatal(func(s string, i int) {
 		require.Equal(t, "error: custom resource ApplySet parents cannot be created automatically", s)
@@ -2596,8 +2596,8 @@ func TestApplySet_ClusterScopedCustomResourceParent(t *testing.T) {
 		}
 	})
 
-	// 'create' the CR parent out of band
-	tracker.Add(applySetObj)
+	// 'create' the CR parent
+	serverSideData[pathParentApplySet] = applySetJSON
 	cmdtesting.WithAlphaEnvs([]cmdutil.FeatureGate{cmdutil.ApplySet}, t, func(t *testing.T) {
 		cmd := NewCmdApply("kubectl", tf, ioStreams)
 		cmd.Flags().Set("filename", filenameRC)
