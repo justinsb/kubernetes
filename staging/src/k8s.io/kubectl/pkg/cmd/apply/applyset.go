@@ -260,9 +260,9 @@ func (a *ApplySet) FetchParent() error {
 		}
 		return nil
 	} else if err != nil {
-		return fmt.Errorf("failed to fetch ApplySet parent object %q from server: %w", a.parentRef, err)
+		return fmt.Errorf("failed to fetch ApplySet parent object %q: %w", a.parentRef, err)
 	} else if obj == nil {
-		return fmt.Errorf("failed to fetch ApplySet parent object %q from server", a.parentRef)
+		return fmt.Errorf("failed to fetch ApplySet parent object %q", a.parentRef)
 	}
 
 	labels, annotations, err := getLabelsAndAnnotations(obj)
