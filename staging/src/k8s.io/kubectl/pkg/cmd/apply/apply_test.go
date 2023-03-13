@@ -2377,7 +2377,7 @@ metadata:
     applyset.k8s.io/tooling: kubectl/v0.0.0-master+$Format:%H$
   creationTimestamp: null
   labels:
-    applyset.k8s.io/id: bXktc2V0LnRlc3QuU2VjcmV0
+    applyset.k8s.io/id: applyset-0eFHV8ySqp7XoShsGvyWFQD3s96yqwHmzc4e0HR1dsY-1
   name: my-set
   namespace: test
 `, string(createdSecret))
@@ -2407,7 +2407,7 @@ metadata:
     applyset.k8s.io/tooling: kubectl/v0.0.0-master+$Format:%H$
   creationTimestamp: null
   labels:
-    applyset.k8s.io/id: bXktc2V0LnRlc3QuU2VjcmV0
+    applyset.k8s.io/id: applyset-0eFHV8ySqp7XoShsGvyWFQD3s96yqwHmzc4e0HR1dsY-1
   name: my-set
   namespace: test
 `, string(updatedSecret))
@@ -2438,7 +2438,7 @@ metadata:
     applyset.k8s.io/tooling: kubectl/v0.0.0-master+$Format:%H$
   creationTimestamp: null
   labels:
-    applyset.k8s.io/id: bXktc2V0LnRlc3QuU2VjcmV0
+    applyset.k8s.io/id: applyset-0eFHV8ySqp7XoShsGvyWFQD3s96yqwHmzc4e0HR1dsY-1
   name: my-set
   namespace: test
 `, string(updatedSecret))
@@ -2459,7 +2459,7 @@ func TestApplySetInvalidLiveParent(t *testing.T) {
 		idLabel           string
 		expectErr         string
 	}
-	validIDLabel := "bXktc2V0LnRlc3QuU2VjcmV0"
+	validIDLabel := "applyset-0eFHV8ySqp7XoShsGvyWFQD3s96yqwHmzc4e0HR1dsY-1"
 	validToolingAnnotation := "kubectl/v1.27.0"
 	validGrsAnnotation := "deployments.apps,namespaces,secrets"
 
@@ -2622,7 +2622,7 @@ metadata:
     applyset.k8s.io/tooling: kubectl/v0.0.0-master+$Format:%H$
   creationTimestamp: null
   labels:
-    applyset.k8s.io/id: bXktc2V0LkFwcGx5U2V0LmNvbXBhbnkuY29t
+    applyset.k8s.io/id: applyset-364pXEKKC_BT_Xk5ReIm_qcW2SFR-O5nsiZDdaJyDuQ-1
   name: my-set
 `, string(updatedApplySet))
 }
@@ -2647,7 +2647,7 @@ metadata:
     applyset.k8s.io/tooling: kubectl/v0.0.0-master+$Format:%H$
   creationTimestamp: null
   labels:
-    applyset.k8s.io/id: bXktc2V0LnRlc3QuU2VjcmV0
+    applyset.k8s.io/id: applyset-0eFHV8ySqp7XoShsGvyWFQD3s96yqwHmzc4e0HR1dsY-1
   name: my-set
   namespace: test
 `

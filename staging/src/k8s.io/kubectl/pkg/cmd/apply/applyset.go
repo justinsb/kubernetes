@@ -17,8 +17,8 @@ limitations under the License.
 package apply
 
 import (
-	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -160,13 +160,10 @@ func (a ApplySet) ID() string {
 	} else {
 		unencoded = strings.Join([]string{a.parentRef.Name, a.parentRef.GroupVersionKind.Kind, a.parentRef.GroupVersionKind.Group}, applySetIDPartDelimiter)
 	}
-	w := bytes.Buffer{}
-	encoder := base64.NewEncoder(base64.URLEncoding, &w)
-	_, err := encoder.Write([]byte(unencoded))
-	if err != nil {
-		klog.Fatalf("failed to encode parent ID %s: %w", unencoded, err)
-	}
-	return w.String()
+	hashed := sha256.Sum256([]byte(unencoded))
+	b64 := base64.RawURLEncoding.EncodeToString(hashed[:])
+	// Label values must start and end with alphanumeric values, so add a known-safe prefix and suffix.
+	return "applyset-" + b64 + "-1"
 }
 
 // Validate imposes restrictions on the parent object that is used to track the applyset.
