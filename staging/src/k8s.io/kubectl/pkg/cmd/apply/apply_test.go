@@ -236,6 +236,7 @@ func TestApplyFlagValidation(t *testing.T) {
 			f := cmdtesting.NewTestFactory()
 			defer f.Cleanup()
 			f.Client = &fake.RESTClient{}
+			f.UnstructuredClient = f.Client
 			cmdtesting.WithAlphaEnvs(test.enableAlphas, t, func(t *testing.T) {
 				cmd := &cobra.Command{}
 				flags := NewApplyFlags(genericclioptions.NewTestIOStreamsDiscard())
@@ -2270,6 +2271,7 @@ func addMinimalClientsForApplySetTests(t *testing.T, tf *cmdtesting.TestFactory,
 			}
 		}),
 	}
+	tf.UnstructuredClient = tf.Client
 	return
 }
 
@@ -2277,6 +2279,7 @@ func TestLoadObjects(t *testing.T) {
 	f := cmdtesting.NewTestFactory().WithNamespace("test")
 	defer f.Cleanup()
 	f.Client = &fake.RESTClient{}
+	f.UnstructuredClient = f.Client
 
 	testdirs := []string{"testdata/prune/simple"}
 	for _, testdir := range testdirs {
@@ -2680,6 +2683,7 @@ metadata:
 			return nil, nil
 		}),
 	}
+	tf.UnstructuredClient = tf.Client
 
 	ioStreams, _, outbuff, errbuff := genericclioptions.NewTestIOStreams()
 	cmdtesting.WithAlphaEnvs([]cmdutil.FeatureGate{cmdutil.ApplySet}, t, func(t *testing.T) {
@@ -2744,6 +2748,7 @@ func TestApplySetDryRun(t *testing.T) {
 	t.Run("server side dry run", func(t *testing.T) {
 		ioStreams, _, outbuff, _ := genericclioptions.NewTestIOStreams()
 		tf.Client = fakeDryRunClient(t, true)
+		tf.UnstructuredClient = tf.Client
 		cmdtesting.WithAlphaEnvs([]cmdutil.FeatureGate{cmdutil.ApplySet}, t, func(t *testing.T) {
 			cmd := NewCmdApply("kubectl", tf, ioStreams)
 			cmd.Flags().Set("filename", filenameRC)
@@ -2761,6 +2766,7 @@ func TestApplySetDryRun(t *testing.T) {
 	t.Run("client side dry run", func(t *testing.T) {
 		ioStreams, _, outbuff, _ := genericclioptions.NewTestIOStreams()
 		tf.Client = fakeDryRunClient(t, false)
+		tf.UnstructuredClient = tf.Client
 		cmdtesting.WithAlphaEnvs([]cmdutil.FeatureGate{cmdutil.ApplySet}, t, func(t *testing.T) {
 			cmd := NewCmdApply("kubectl", tf, ioStreams)
 			cmd.Flags().Set("filename", filenameRC)
