@@ -230,6 +230,21 @@ func (c *codec) doEncode(obj runtime.Object, w io.Writer, memAlloc runtime.Memor
 	switch obj := obj.(type) {
 	case *runtime.Unknown:
 		return encodeFn(obj, w)
+	case runtime.SerializedObject:
+		// Already in the right version and wire format: hand it to the
+		// serializer untouched. Anything else pays for the decode it skipped.
+		if c.encodeVersion != nil && obj.EncodableBy(c.encoder.Identifier()) {
+			objGVK := obj.GetObjectKind().GroupVersionKind()
+			if targetGVK, ok := c.encodeVersion.KindForGroupVersionKinds([]schema.GroupVersionKind{objGVK}); ok && targetGVK == objGVK {
+				return encodeFn(obj, w)
+			}
+		}
+		decoded, err := obj.DecodedObject()
+		if err != nil {
+			return err
+		}
+		// The decoded object is shared, and encoding flips its GVK back and forth.
+		return c.doEncode(decoded.DeepCopyObject(), w, memAlloc)
 	case runtime.Unstructured:
 		// An unstructured list can contain objects of multiple group version kinds. don't short-circuit just
 		// because the top-level type matches our desired destination type. actually send the object to the converter

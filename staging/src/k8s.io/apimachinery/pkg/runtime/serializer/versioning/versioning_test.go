@@ -403,3 +403,60 @@ func BenchmarkIdentifier(b *testing.B) {
 		}
 	}
 }
+
+type mockSerializedObject struct {
+	testDecodable
+	encodableBy runtime.Identifier
+	decoded     *testDecodable
+	decodes     int
+}
+
+func (o *mockSerializedObject) GetObjectKind() schema.ObjectKind { return o }
+func (o *mockSerializedObject) DeepCopyObject() runtime.Object   { return o }
+func (o *mockSerializedObject) EncodableBy(id runtime.Identifier) bool {
+	return id == o.encodableBy
+}
+func (o *mockSerializedObject) DecodedObject() (runtime.Object, error) {
+	o.decodes++
+	return o.decoded, nil
+}
+
+func TestSerializedObject(t *testing.T) {
+	stored := schema.GroupVersionKind{Group: "group", Version: "v1", Kind: "Kind"}
+	internal := schema.GroupVersionKind{Group: "group", Version: runtime.APIVersionInternal, Kind: "Kind"}
+
+	for name, tc := range map[string]struct {
+		encodableBy   runtime.Identifier
+		encodeVersion schema.GroupVersion
+		passedThrough bool
+	}{
+		"same serializer and version": {encodableBy: "mock", encodeVersion: stored.GroupVersion(), passedThrough: true},
+		"another serializer":          {encodableBy: "other", encodeVersion: stored.GroupVersion()},
+		"another version":             {encodableBy: "mock", encodeVersion: schema.GroupVersion{Group: "group", Version: "v2"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			serializer := &mockSerializer{}
+			obj := &mockSerializedObject{
+				testDecodable: testDecodable{gvk: stored},
+				encodableBy:   tc.encodableBy,
+				decoded:       &testDecodable{gvk: internal},
+			}
+			encoder := NewCodec(serializer, nil, &mockConvertor{}, nil, &mockTyper{gvks: []schema.GroupVersionKind{internal}}, nil, tc.encodeVersion, nil, "TestSerializedObject")
+			if err := encoder.Encode(obj, io.Discard); err != nil {
+				t.Fatal(err)
+			}
+			if tc.passedThrough {
+				if serializer.obj != runtime.Object(obj) || obj.decodes != 0 {
+					t.Errorf("serializer got %T after %d decodes, expected the serialized object itself and no decode", serializer.obj, obj.decodes)
+				}
+				return
+			}
+			if serializer.obj != runtime.Object(obj.decoded) || obj.decodes != 1 {
+				t.Errorf("serializer got %T after %d decodes, expected the decoded object after one decode", serializer.obj, obj.decodes)
+			}
+			if got := serializer.encodingObjGVK.GroupVersion(); got != tc.encodeVersion {
+				t.Errorf("decoded object was encoded as %v, expected %v", got, tc.encodeVersion)
+			}
+		})
+	}
+}

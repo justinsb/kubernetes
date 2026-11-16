@@ -360,6 +360,22 @@ type CacheableObject interface {
 	GetObject() Object
 }
 
+// SerializedObject is an Object that is held in its serialized form and only
+// decoded on demand. It lets an object travel from storage to an encoder that
+// uses the same wire format and version without ever being decoded.
+//
+// GetObjectKind reports the group, version and kind of the serialized form.
+type SerializedObject interface {
+	Object
+	// EncodableBy reports whether the encoder with the given identifier can
+	// write this object as-is, in the version reported by GetObjectKind.
+	EncodableBy(encoder Identifier) bool
+	// DecodedObject returns the decoded object, as it would have been handed
+	// out had it never been kept serialized. The result may be shared between
+	// callers and must not be mutated.
+	DecodedObject() (Object, error)
+}
+
 // Unstructured objects store values as map[string]interface{}, with only values that can be serialized
 // to JSON allowed.
 type Unstructured interface {
