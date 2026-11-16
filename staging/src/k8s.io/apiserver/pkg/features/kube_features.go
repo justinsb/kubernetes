@@ -352,6 +352,13 @@ const (
 	// Enables compression for WatchList responses
 	WatchListCompression featuregate.Feature = "WatchListCompression"
 
+	// owner: @justinsb
+	//
+	// Keeps objects of opted-in resources serialized between the storage watch
+	// and protobuf watch responses, decoding them only when something other
+	// than their metadata, labels and selectable fields is needed.
+	WatchWithoutDecoding featuregate.Feature = "WatchWithoutDecoding"
+
 	// owner: @aojea
 	// beta: v1.37
 	//
@@ -577,6 +584,10 @@ var defaultVersionedKubernetesFeatureGates = map[featuregate.Feature]featuregate
 
 	WatchListCompression: {
 		{Version: version.MustParse("1.37"), Default: true, PreRelease: featuregate.Beta},
+	},
+
+	WatchWithoutDecoding: {
+		{Version: version.MustParse("1.38"), Default: false, PreRelease: featuregate.Alpha},
 	},
 
 	WebhookRoundTripLoadBalancing: {

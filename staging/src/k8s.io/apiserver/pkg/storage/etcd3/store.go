@@ -47,6 +47,7 @@ import (
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/etcd3/metrics"
 	etcdfeature "k8s.io/apiserver/pkg/storage/feature"
+	"k8s.io/apiserver/pkg/storage/rawobject"
 	"k8s.io/apiserver/pkg/storage/value"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/component-base/tracing"
@@ -137,6 +138,16 @@ func (a *abortOnFirstError) Append(key string, err error) bool {
 	return true
 }
 func (a *abortOnFirstError) Aggregate() error { return a.err }
+
+// SetRawWatchObjects makes watches opened from now on emit objects of the
+// configured type in serialized form. It has to be called before the store is
+// used.
+func (s *store) SetRawWatchObjects(config rawobject.Config) {
+	w := s.watcher
+	w.rawObjects = rawobject.NewFactory(config, func(value []byte, rev int64) (runtime.Object, error) {
+		return decodeObj(w.codec, w.versioner, value, rev)
+	})
+}
 
 // New returns an etcd3 implementation of storage.Interface.
 func New(c *kubernetes.Client, compactor Compactor, codec runtime.Codec, newFunc, newListFunc func() runtime.Object, reverseKeyFunc storage.ReverseKeyFunc, prefix, resourcePrefix string, groupResource schema.GroupResource, transformer value.Transformer, leaseManagerConfig LeaseManagerConfig, decoder Decoder, versioner storage.Versioner) (*store, error) {

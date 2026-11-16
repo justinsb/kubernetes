@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/storage"
+	"k8s.io/apiserver/pkg/storage/rawobject"
 	"k8s.io/apiserver/pkg/storage/storagebackend"
 	flowcontrolrequest "k8s.io/apiserver/pkg/util/flowcontrol/request"
 	"k8s.io/client-go/tools/cache"
@@ -59,4 +60,9 @@ type StoreOptions struct {
 	Indexers    *cache.Indexers
 
 	DecodeDecorator func(runtime.Object)
+
+	// RawWatchObjects opts the resource into keeping watched objects
+	// serialized, subject to the WatchWithoutDecoding feature gate. Its
+	// AttrFunc has to agree with AttrFunc above.
+	RawWatchObjects *rawobject.Config
 }

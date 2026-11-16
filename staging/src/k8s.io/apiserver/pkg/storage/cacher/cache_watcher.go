@@ -389,6 +389,10 @@ func getShallowCopyObject(object runtime.Object) runtime.Object {
 	if u, ok := object.(*unstructured.Unstructured); ok {
 		return &unstructured.Unstructured{Object: maps.Clone(u.Object)}
 	}
+	if s, ok := object.(runtime.SerializedObject); ok {
+		// Copying one of these is already shallow.
+		return s.DeepCopyObject()
+	}
 	v := reflect.ValueOf(object)
 	if v.Kind() == reflect.Pointer && v.Elem().Kind() == reflect.Struct {
 		cp := reflect.New(v.Type().Elem())

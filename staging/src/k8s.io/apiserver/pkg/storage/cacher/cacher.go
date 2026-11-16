@@ -51,6 +51,7 @@ import (
 	"k8s.io/apiserver/pkg/storage/cacher/progress"
 	"k8s.io/apiserver/pkg/storage/cacher/store"
 	etcdfeature "k8s.io/apiserver/pkg/storage/feature"
+	"k8s.io/apiserver/pkg/storage/rawobject"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/component-base/tracing"
@@ -1070,7 +1071,11 @@ func (c *Cacher) get(ctx context.Context, key string, resourceVersion string, ig
 	if !ok {
 		return nil, false, fmt.Errorf("non *store.Element returned from storage: %v", obj)
 	}
-	return elem.Object, true, nil
+	decoded, err := rawobject.Decoded(elem.Object)
+	if err != nil {
+		return nil, false, err
+	}
+	return decoded, true, nil
 }
 
 // computeListLimit determines whether the cacher should
@@ -1152,7 +1157,11 @@ func (c *Cacher) GetList(ctx context.Context, key string, opts storage.ListOptio
 			if err != nil {
 				return err
 			}
-			listVal.Index(numFetched).Set(reflect.ValueOf(elem.Object).Elem())
+			decoded, err := rawobject.Decoded(elem.Object)
+			if err != nil {
+				return err
+			}
+			listVal.Index(numFetched).Set(reflect.ValueOf(decoded).Elem())
 			lastSelectedObjectKey = elem.Key
 			numFetched++
 			if numFetched == count {
@@ -1196,7 +1205,11 @@ func (c *Cacher) GetList(ctx context.Context, key string, opts storage.ListOptio
 			listVal.Set(reflect.MakeSlice(listVal.Type(), len(selectedObjects), len(selectedObjects)))
 			span.AddEvent("Resized result")
 			for i, o := range selectedObjects {
-				listVal.Index(i).Set(reflect.ValueOf(o).Elem())
+				decoded, err := rawobject.Decoded(o)
+				if err != nil {
+					return err
+				}
+				listVal.Index(i).Set(reflect.ValueOf(decoded).Elem())
 			}
 		}
 	}

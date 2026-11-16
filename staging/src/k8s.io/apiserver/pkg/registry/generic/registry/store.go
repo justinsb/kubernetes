@@ -1751,6 +1751,13 @@ func (e *Store) CompleteWithOptions(options *generic.StoreOptions) error {
 			storageConfig = &storageConfigCopy
 		}
 
+		// A decode decorator has to see every object, which rules out not decoding them.
+		if options.RawWatchObjects != nil && options.DecodeDecorator == nil && utilfeature.DefaultFeatureGate.Enabled(features.WatchWithoutDecoding) {
+			storageConfigCopy := *storageConfig
+			storageConfigCopy.RawWatchObjects = options.RawWatchObjects
+			storageConfig = &storageConfigCopy
+		}
+
 		e.Storage.Codec = storageConfig.Codec
 
 		var err error

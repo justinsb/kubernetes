@@ -2215,6 +2215,12 @@
     lockToDefault: false
     preRelease: Beta
     version: "1.37"
+- name: WatchWithoutDecoding
+  versionedSpecs:
+  - default: false
+    lockToDefault: false
+    preRelease: Alpha
+    version: "1.38"
 - name: WebhookRoundTripLoadBalancing
   versionedSpecs:
   - default: true

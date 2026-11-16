@@ -84,6 +84,16 @@ func (e *watchEmbeddedEncoder) Encode(obj runtime.Object, w io.Writer) error {
 }
 
 func (e *watchEmbeddedEncoder) doEncode(obj runtime.Object, w io.Writer) error {
+	if s, ok := obj.(runtime.SerializedObject); ok && (e.target != nil || len(e.drop) > 0) {
+		// Transforming needs the actual object. Left alone, the object gets a
+		// chance to reach the serializer without being decoded.
+		decoded, err := s.DecodedObject()
+		if err != nil {
+			return err
+		}
+		// The decoded object is shared, and the transformations below may write to it.
+		obj = decoded.DeepCopyObject()
+	}
 	result, err := doTransformObject(e.ctx, obj, e.tableOptions, e.target, e.drop, e.scope)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to transform object %v: %v", reflect.TypeOf(obj), err))

@@ -42,6 +42,7 @@ import (
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/etcd3/metrics"
 	etcdfeature "k8s.io/apiserver/pkg/storage/feature"
+	"k8s.io/apiserver/pkg/storage/rawobject"
 	"k8s.io/apiserver/pkg/storage/value"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	utilflowcontrol "k8s.io/apiserver/pkg/util/flowcontrol"
@@ -98,6 +99,8 @@ type watcher struct {
 	transformer              value.Transformer
 	getCurrentStorageRV      func(context.Context) (uint64, error)
 	getResourceSizeEstimator func() *resourceSizeEstimator
+	// rawObjects, if set, keeps watched objects serialized where possible.
+	rawObjects *rawobject.Factory
 }
 
 // storageKey keeps backend-prefixed keys distinct from the resource-relative
@@ -879,7 +882,7 @@ func (wc *watchChan) prepareObjs(e *event) (curObj runtime.Object, oldObj runtim
 		if err != nil {
 			return nil, nil, err
 		}
-		curObj, err = decodeObj(wc.watcher.codec, wc.watcher.versioner, data, e.rev)
+		curObj, err = wc.watcher.decodeObj(data, e.rev)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -896,7 +899,7 @@ func (wc *watchChan) prepareObjs(e *event) (curObj runtime.Object, oldObj runtim
 		}
 		// Note that this sends the *old* object with the etcd revision for the time at
 		// which it gets deleted.
-		oldObj, err = decodeObj(wc.watcher.codec, wc.watcher.versioner, data, e.rev)
+		oldObj, err = wc.watcher.decodeObj(data, e.rev)
 		if err != nil {
 			return nil, nil, wc.watcher.transformIfCorruptObjectError(e, err)
 		}
@@ -924,6 +927,17 @@ func (w *watcher) transformIfCorruptObjectError(e *event, err error) error {
 	// decode the data associated with the object.
 	// wrap the original error so we can send a proper watch Error event.
 	return &corruptObjectDeletedError{err: corruptObjErr}
+}
+
+// decodeObj returns the object stored in data. With rawObjects configured the
+// object is not actually decoded if it can be avoided.
+func (w *watcher) decodeObj(data []byte, rev int64) (runtime.Object, error) {
+	if w.rawObjects != nil {
+		if obj, ok := w.rawObjects.New(data, rev); ok {
+			return obj, nil
+		}
+	}
+	return decodeObj(w.codec, w.versioner, data, rev)
 }
 
 func decodeObj(codec runtime.Codec, versioner storage.Versioner, data []byte, rev int64) (_ runtime.Object, err error) {

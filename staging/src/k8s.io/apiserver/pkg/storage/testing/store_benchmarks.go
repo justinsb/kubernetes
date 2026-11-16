@@ -40,10 +40,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/runtime/serializer/protobuf"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/protopluck"
 	"k8s.io/apimachinery/pkg/util/rand"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/storage"
+	"k8s.io/apiserver/pkg/storage/rawobject"
 )
 
 //go:embed testdata/exemplar_pod.yaml
@@ -112,7 +114,68 @@ func StoreConfigForBenchmarks() StoreConfig {
 	}
 }
 
+// RawWatchObjectsForBenchmarks returns what a store set up from
+// StoreConfigForBenchmarks needs to keep the pods it watches serialized. The
+// GetAttrsFunc of that config understands the resulting objects.
+func RawWatchObjectsForBenchmarks() rawobject.Config {
+	return rawobject.Config{
+		GroupVersionKind: corev1.SchemeGroupVersion.WithKind("Pod"),
+		AttrFunc:         rawCorev1PodAttrs,
+	}
+}
+
+var rawCorev1PodPlucker = protopluck.MustCompile(
+	rawobject.NamePath,
+	rawobject.NamespacePath,
+	rawobject.LabelsPath,
+	protopluck.Path{2, 10}, // spec.nodeName
+	protopluck.Path{2, 3},  // spec.restartPolicy
+	protopluck.Path{3, 1},  // status.phase
+)
+
+// rawCorev1PodAttrs is getCorev1PodAttrs for a protobuf encoded pod.
+func rawCorev1PodAttrs(msg []byte) (rawobject.Attrs, error) {
+	var buf [16]protopluck.Value
+	values, err := rawCorev1PodPlucker.Pluck(msg, buf[:0])
+	if err != nil {
+		return rawobject.Attrs{}, err
+	}
+	var meta rawobject.ObjectMetaAttrs
+	var nodeName, restartPolicy, phase []byte
+	for _, v := range values {
+		switch v.Index {
+		case 0:
+			meta.SetName(v)
+		case 1:
+			meta.SetNamespace(v)
+		case 2:
+			if err := meta.AddLabel(v); err != nil {
+				return rawobject.Attrs{}, err
+			}
+		case 3:
+			nodeName = v.Bytes
+		case 4:
+			restartPolicy = v.Bytes
+		case 5:
+			phase = v.Bytes
+		}
+	}
+	attrs := meta.Attrs()
+	attrs.Fields = fields.Set{
+		"metadata.name":      attrs.Name,
+		"metadata.namespace": attrs.Namespace,
+		"spec.nodeName":      string(nodeName),
+		"spec.restartPolicy": string(restartPolicy),
+		"status.phase":       string(phase),
+	}
+	return attrs, nil
+}
+
 func getCorev1PodAttrs(obj runtime.Object) (labels.Set, fields.Set, error) {
+	if raw, ok := obj.(*rawobject.Object); ok {
+		attrs := raw.Attrs()
+		return attrs.Labels, attrs.Fields, nil
+	}
 	pod, ok := obj.(*corev1.Pod)
 	if !ok {
 		return nil, nil, fmt.Errorf("not a pod")
