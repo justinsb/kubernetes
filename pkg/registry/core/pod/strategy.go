@@ -45,6 +45,7 @@ import (
 	"k8s.io/apiserver/pkg/registry/rest"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/names"
+	"k8s.io/apiserver/pkg/storage/rawobject"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/apiserver/pkg/warning"
 	"k8s.io/client-go/tools/cache"
@@ -533,6 +534,10 @@ func (podDynamicStrategy) WarningsOnUpdate(ctx context.Context, obj, old runtime
 
 // GetAttrs returns labels and fields of a given object for filtering purposes.
 func GetAttrs(obj runtime.Object) (labels.Set, fields.Set, error) {
+	if raw, ok := obj.(*rawobject.Object); ok {
+		attrs := raw.Attrs()
+		return attrs.Labels, attrs.Fields, nil
+	}
 	pod, ok := obj.(*api.Pod)
 	if !ok {
 		return nil, nil, fmt.Errorf("not a pod")
@@ -552,11 +557,17 @@ func MatchPod(label labels.Selector, field fields.Selector) storage.SelectionPre
 
 // NodeNameTriggerFunc returns value spec.nodename of given object.
 func NodeNameTriggerFunc(obj runtime.Object) string {
+	if raw, ok := obj.(*rawobject.Object); ok {
+		return raw.Attrs().Fields["spec.nodeName"]
+	}
 	return obj.(*api.Pod).Spec.NodeName
 }
 
 // NodeNameIndexFunc return value spec.nodename of given object.
 func NodeNameIndexFunc(obj interface{}) ([]string, error) {
+	if raw, ok := obj.(*rawobject.Object); ok {
+		return []string{raw.Attrs().Fields["spec.nodeName"]}, nil
+	}
 	pod, ok := obj.(*api.Pod)
 	if !ok {
 		return nil, fmt.Errorf("not a pod")

@@ -100,6 +100,8 @@ func NewStorage(optsGetter generic.RESTOptionsGetter, k client.ConnectionInfoGet
 		AttrFunc:    registrypod.GetAttrs,
 		TriggerFunc: map[string]storage.IndexerFunc{"spec.nodeName": registrypod.NodeNameTriggerFunc},
 		Indexers:    registrypod.Indexers(),
+
+		RawWatchObjects: registrypod.RawWatchObjects(),
 	}
 	if err := store.CompleteWithOptions(options); err != nil {
 		return PodStorage{}, err
