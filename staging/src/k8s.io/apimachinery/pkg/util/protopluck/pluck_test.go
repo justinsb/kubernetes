@@ -221,3 +221,48 @@ func TestCompile(t *testing.T) {
 		})
 	}
 }
+
+func TestRange(t *testing.T) {
+	obj := testObject()
+	data, err := obj.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// One level at a time: the object holds metadata, which holds the rest.
+	var metadata []byte
+	if !Range(data, func(num int32, v Value) bool {
+		if num == 1 {
+			metadata = v.Bytes
+		}
+		return true
+	}) {
+		t.Fatal("well-formed message was rejected")
+	}
+	var name string
+	var generation int64
+	owners := 0
+	if !Range(metadata, func(num int32, v Value) bool {
+		switch num {
+		case 1:
+			name = string(v.Bytes)
+		case 7:
+			generation = int64(v.Num)
+		case 13:
+			owners++
+		}
+		return true
+	}) {
+		t.Fatal("well-formed message was rejected")
+	}
+	if name != obj.Name || generation != obj.Generation || owners != len(obj.OwnerReferences) {
+		t.Errorf("got name %q, generation %d, %d owners", name, generation, owners)
+	}
+
+	visited := 0
+	if Range(metadata, func(int32, Value) bool { visited++; return false }) || visited != 1 {
+		t.Errorf("expected Range to stop and report it when told to, visited %d fields", visited)
+	}
+	if Range(metadata[:len(metadata)-1], func(int32, Value) bool { return true }) {
+		t.Errorf("truncated message was accepted")
+	}
+}

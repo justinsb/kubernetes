@@ -230,3 +230,43 @@ func (n *node) pluck(b []byte, dst []Value) ([]Value, error) {
 	}
 	return dst, nil
 }
+
+// Range calls fn for every field of the message in data, in wire order, with
+// the field's number and its value (Value.Index is not meaningful here). It
+// stops and returns false if fn does, or if data is not a well-formed message.
+//
+// It is the building block for checks a list of paths cannot express, such as
+// "every element of this repeated message has that field set".
+func Range(data []byte, fn func(num int32, v Value) bool) bool {
+	for len(data) > 0 {
+		num, typ, tagLen := protowire.ConsumeTag(data)
+		if tagLen < 0 {
+			return false
+		}
+		data = data[tagLen:]
+		v := Value{Type: typ}
+		var valLen int
+		switch typ {
+		case protowire.BytesType:
+			v.Bytes, valLen = protowire.ConsumeBytes(data)
+		case protowire.VarintType:
+			v.Num, valLen = protowire.ConsumeVarint(data)
+		case protowire.Fixed64Type:
+			v.Num, valLen = protowire.ConsumeFixed64(data)
+		case protowire.Fixed32Type:
+			var n32 uint32
+			n32, valLen = protowire.ConsumeFixed32(data)
+			v.Num = uint64(n32)
+		default:
+			return false
+		}
+		if valLen < 0 {
+			return false
+		}
+		data = data[valLen:]
+		if !fn(int32(num), v) {
+			return false
+		}
+	}
+	return true
+}
