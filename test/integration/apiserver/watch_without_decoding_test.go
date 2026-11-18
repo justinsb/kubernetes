@@ -17,6 +17,7 @@ limitations under the License.
 package apiserver
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"testing"
@@ -27,6 +28,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/storage/rawobject"
@@ -221,5 +223,111 @@ func collectPodEvents(t *testing.T, ctx context.Context, w watch.Interface, last
 		case <-ctx.Done():
 			t.Fatalf("timed out after %d events", len(events))
 		}
+	}
+}
+
+// TestWatchWithoutDecodingAppliesDefaults plants a pod in etcd the way an
+// apiserver that knew fewer defaults would have written it. Such a pod has to
+// be decoded, so that protobuf watchers get those defaults like anyone else.
+// Once the pod is written again, by this apiserver, it no longer needs to be.
+func TestWatchWithoutDecodingAppliesDefaults(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.WatchWithoutDecoding, true)
+
+	server := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
+	defer server.TearDownFn()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	config := rest.CopyConfig(server.ClientConfig)
+	config.ContentType = runtime.ContentTypeProtobuf
+	config.AcceptContentTypes = runtime.ContentTypeProtobuf
+	client := clientset.NewForConfigOrDie(config)
+
+	ns := "watch-without-decoding-defaults"
+	if _, err := client.CoreV1().Namespaces().Create(ctx, &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.CoreV1().ServiceAccounts(ns).Create(ctx, &v1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "default"}}, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	pods := client.CoreV1().Pods(ns)
+	pod := testPod("old", map[string]string{"app": "a"}, "node-1")
+	pod.Spec.Containers[0].LivenessProbe = &v1.Probe{ProbeHandler: v1.ProbeHandler{HTTPGet: &v1.HTTPGetAction{Port: intstr.FromInt32(8080)}}}
+	created, err := pods.Create(ctx, pod, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := pods.Watch(ctx, metav1.ListOptions{ResourceVersion: created.ResourceVersion})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Stop()
+
+	// Rewrite the pod behind the apiserver's back, without some defaults: an
+	// old one, and the most recent one.
+	key := "/" + server.EtcdStoragePrefix + "/pods/" + ns + "/old"
+	stored, err := server.EtcdClient.Get(ctx, key)
+	if err != nil || len(stored.Kvs) != 1 {
+		t.Fatalf("reading %s from etcd: %v, %d values", key, err, len(stored.Kvs))
+	}
+	magic := []byte("k8s\x00")
+	envelope := &runtime.Unknown{}
+	if err := envelope.Unmarshal(bytes.TrimPrefix(stored.Kvs[0].Value, magic)); err != nil {
+		t.Fatal(err)
+	}
+	old := &v1.Pod{}
+	if err := old.Unmarshal(envelope.Raw); err != nil {
+		t.Fatal(err)
+	}
+	if old.Spec.DNSPolicy == "" || old.Spec.Containers[0].LivenessProbe.TimeoutSeconds == 0 {
+		t.Fatalf("the pod is not stored defaulted, which this test builds on: %v", old)
+	}
+	old.Spec.DNSPolicy = ""
+	old.Spec.Containers[0].LivenessProbe.TimeoutSeconds = 0
+	old.Spec.Containers[0].LivenessProbe.HTTPGet.Protocol = nil
+	if envelope.Raw, err = old.Marshal(); err != nil {
+		t.Fatal(err)
+	}
+	value, err := envelope.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := rawobject.ReadStats()
+	put, err := server.EtcdClient.Put(ctx, key, string(append(magic, value...)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	planted := collectPodEvents(t, ctx, w, fmt.Sprint(put.Header.Revision))
+	watched := planted[len(planted)-1].Pod
+	// Reading the pod decodes it, which is the reference for what clients should see.
+	read, err := pods.Get(ctx, "old", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff(read, watched); diff != "" {
+		t.Errorf("the pod as watched differs from the pod as read (-read +watched):\n%s", diff)
+	}
+	if watched.Spec.DNSPolicy == "" || watched.Spec.Containers[0].LivenessProbe.TimeoutSeconds == 0 {
+		t.Errorf("the watched pod lacks the defaults that were removed from storage: %v", watched)
+	}
+	if after := rawobject.ReadStats(); after.Created != before.Created {
+		t.Errorf("a pod that needs defaulting was kept serialized")
+	}
+
+	// Any write through the apiserver stores the pod defaulted again.
+	before = rawobject.ReadStats()
+	read.Labels["app"] = "b"
+	updated, err := pods.Update(ctx, read, metav1.UpdateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewritten := collectPodEvents(t, ctx, w, updated.ResourceVersion)
+	if diff := cmp.Diff(updated, rewritten[len(rewritten)-1].Pod); diff != "" {
+		t.Errorf("the pod as watched differs from the pod as updated (-updated +watched):\n%s", diff)
+	}
+	if after := rawobject.ReadStats(); after.Created == before.Created {
+		t.Errorf("the pod was not kept serialized after being written with its defaults")
 	}
 }

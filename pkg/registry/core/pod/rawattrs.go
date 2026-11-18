@@ -17,6 +17,7 @@ limitations under the License.
 package pod
 
 import (
+	"errors"
 	"strconv"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -72,10 +73,15 @@ var rawAttrsPlucker = protopluck.MustCompile(
 	protopluck.Path{podStatusField, 11},
 )
 
+var errNeedsDefaulting = errors.New("pod is not in its defaulted state")
+
 // rawAttrs is GetAttrs for a protobuf encoded v1.Pod. Like GetAttrs, it sees
-// the pod as it reads back from storage, which is why it reproduces the one
-// read-time default that selectable fields depend on: podIPs from podIP.
+// the pod as it reads back from storage, that is defaulted. It refuses pods
+// that defaulting would change: they are not to be served from their bytes.
 func rawAttrs(msg []byte) (rawobject.Attrs, error) {
+	if !currentPodDefaults().isDefaulted(msg) {
+		return rawobject.Attrs{}, errNeedsDefaulting
+	}
 	var buf [24]protopluck.Value
 	values, err := rawAttrsPlucker.Pluck(msg, buf[:0])
 	if err != nil {

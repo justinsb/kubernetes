@@ -27,10 +27,11 @@ limitations under the License.
 //
 // What this gives up, compared to decoding:
 //
-//   - Protobuf watchers receive objects as they were written. Defaults
-//     introduced after an object was last written are not applied to it, and
-//     neither are conversion changes. JSON watchers, and anything reading
-//     through GET or LIST, still see them, because they get the decoded object.
+//   - Protobuf watchers receive objects as they were written, so whatever
+//     decoding would have changed must be ruled out first. Config.AttrFunc is
+//     where a type does that: it has to refuse objects that are not in the
+//     state defaulting would leave them in, such as ones written before a
+//     default existed.
 //   - A value that cannot be decoded is not noticed until something decodes it.
 //   - An object that is both watched and read is held in both forms.
 //
@@ -72,6 +73,8 @@ type Config struct {
 	GroupVersionKind schema.GroupVersionKind
 	// AttrFunc plucks Attrs from the protobuf encoding of an object of that
 	// type. It must agree with the storage.AttrFunc used for decoded objects.
+	// It returns an error for an object that must not be served from its
+	// stored bytes, in particular one that decoding would apply defaults to.
 	AttrFunc func(msg []byte) (Attrs, error)
 }
 
